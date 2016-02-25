@@ -55,7 +55,7 @@ kern_return_t unhook_all_syscalls(void *sysent_addr) {
 kern_return_t hook_syscall(void *sysent_addr, int32_t syscall) {
     switch (version_major) {
         case EL_CAPITAN:
-            sysent = (struct sysent_elcap*)sysent_addr;
+            sysent = (struct sysent_yosemite*)sysent_addr;
             break;
         case YOSEMITE:
             sysent = (struct sysent_yosemite*)sysent_addr;
@@ -1321,7 +1321,7 @@ kern_return_t unhook_syscall(void *sysent_addr, int32_t syscall) {
     
     switch (version_major) {
         case EL_CAPITAN:
-            sysent = (struct sysent_elcap*)sysent_addr;
+            sysent = (struct sysent_yosemite*)sysent_addr;
             break;
         case YOSEMITE:
             sysent = (struct sysent_yosemite*)sysent_addr;

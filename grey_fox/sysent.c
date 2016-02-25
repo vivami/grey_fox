@@ -160,26 +160,7 @@ bruteforce_sysent(mach_vm_address_t *out_kernel_base)
     // bruteforce search for sysent in __DATA segment
     while (data_address <= data_limit)
     {
-        if (version_major == EL_CAPITAN)
-        {
-            struct sysent_elcap *table = (struct sysent_elcap*)data_address;
-            if((void*)table != NULL &&
-               table[SYS_exit].sy_narg      == 1 &&
-               table[SYS_fork].sy_narg      == 0 &&
-               table[SYS_read].sy_narg      == 3 &&
-               table[SYS_wait4].sy_narg     == 4 &&
-               table[SYS_ptrace].sy_narg    == 4 &&
-               table[SYS_getxattr].sy_narg  == 6 &&
-               table[SYS_listxattr].sy_narg == 4 &&
-               table[SYS_recvmsg].sy_narg   == 3 )
-            {
-                LOG_DEBUG("exit() address is %p", (void*)table[SYS_exit].sy_call);
-                LOG_DEBUG("no. of args for exit()  %d", table[SYS_exit].sy_narg);
-                LOG_DEBUG("Success!! Done here.");
-                return (void*)data_address;
-            }
-        }
-        else if (version_major == YOSEMITE)
+        if (version_major == YOSEMITE || version_major == EL_CAPITAN)
         {
             struct sysent_yosemite *table = (struct sysent_yosemite*)data_address;
             if((void*)table != NULL &&
