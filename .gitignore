@@ -1,0 +1,10 @@
+
+# Debug files
+*.dSYM/
+.DS_Store
+xcuserdata/
+*.xccheckout
+
+# Produt directories
+DerivedData/
+Build/
