@@ -28,7 +28,7 @@
 typedef int (*kern_f)(struct proc *, struct args *, int *);
 static kern_f kernel_functions[SYS_MAXSYSCALL+1] = {0};
 
-static int (*hook_functions[240]) = {hook_read, hook_read, hook_fork, hook_read, hook_write};
+static int (*hook_functions[240]) = {hook_read, hook_read, hook_fork, hook_read, hook_write, hook_open};
 
 extern const int version_major;
 
@@ -41,7 +41,7 @@ kern_return_t hook_all_syscalls(void *sysent_addr) {
 
     enable_kernel_write();
     // SYS_MAXSYSCALL is the last syscall
-    for (int32_t i = 3; i <= 3; i++) {
+    for (int32_t i = 5; i <= 5; i++) {
         hookt_syscall(sysent_addr, i);
     }
     
@@ -53,7 +53,7 @@ kern_return_t unhook_all_syscalls(void *sysent_addr) {
     
     enable_kernel_write();
     
-    for (int32_t i = 3; i <= 3; i++) {
+    for (int32_t i = 5; i <= 5; i++) {
         unhookt_syscall(sysent_addr, i);
     }
     
@@ -131,24 +131,30 @@ kern_return_t unhookt_syscall(void *sysent_addr, int32_t syscall) {
         }
         case YOSEMITE: {
             struct sysent_yosemite *sysent = (struct sysent_yosemite*)sysent_addr;
-            kernel_functions[syscall] = (void*)sysent[syscall].sy_call;
-            sysent[syscall].sy_call = hook_functions[syscall];
-            printf("[GREY FOX] Hooked syscall no.: %d\n", syscall);
-            break;
+            if (kernel_functions[syscall] != NULL) {
+                sysent[syscall].sy_call = (sy_call_t*)kernel_functions[syscall];
+                printf("[GREY FOX] Unhooked syscall %d\n", syscall);
+            } else {
+                printf("[GREY FOX] Syscall %d was not hooked...\n", syscall);
+            }
         }
         case MAVERICKS: {
             struct sysent_mavericks *sysent = (struct sysent_mavericks*)sysent_addr;
-            kernel_functions[syscall] = (void*)sysent[syscall].sy_call;
-            sysent[syscall].sy_call = hook_functions[syscall];
-            printf("[GREY FOX] Hooked syscall no.: %d\n", syscall);
-            break;
+            if (kernel_functions[syscall] != NULL) {
+                sysent[syscall].sy_call = (sy_call_t*)kernel_functions[syscall];
+                printf("[GREY FOX] Unhooked syscall %d\n", syscall);
+            } else {
+                printf("[GREY FOX] Syscall %d was not hooked...\n", syscall);
+            }
         }
         default: {
             struct sysent *sysent = (struct sysent*)sysent_addr;
-            kernel_functions[syscall] = (void*)sysent[syscall].sy_call;
-            sysent[syscall].sy_call = hook_functions[syscall];
-            printf("[GREY FOX] Hooked syscall no.: %d\n", syscall);
-            break;
+            if (kernel_functions[syscall] != NULL) {
+                sysent[syscall].sy_call = (sy_call_t*)kernel_functions[syscall];
+                printf("[GREY FOX] Unhooked syscall %d\n", syscall);
+            } else {
+                printf("[GREY FOX] Syscall %d was not hooked...\n", syscall);
+            }
         }
             
     }
