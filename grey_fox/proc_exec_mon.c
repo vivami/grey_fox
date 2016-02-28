@@ -335,11 +335,13 @@ kern_return_t plug_kauth_listener(void) {
         printf("[GREY FOX] ERROR: failed to plug KAuth KAUTH_SCOPE_FILEOP listener\n");
         return KERN_FAILURE;
     }
+    printf("[GREY FOX] Plugged KAUTH_SCOPE_FILEOP listener\n");
     kauthListener_vnode = kauth_listen_scope(KAUTH_SCOPE_VNODE, &VnodeScopeListener, NULL);
     if (kauthListener_vnode == NULL) {
         printf("[GREY FOX] ERROR: failed to plug KAuth KAUTH_SCOPE_VNODE listener\n");
         return KERN_FAILURE;
     }
+    printf("[GREY FOX] Plugged KAUTH_SCOPE_VNODE listener\n");
     
     return KERN_SUCCESS;
 }
