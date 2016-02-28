@@ -20,9 +20,6 @@
 
 kern_return_t hook_all_syscalls(void *sysent_addr);
 kern_return_t unhook_all_syscalls(void *sysent_addr);
-kern_return_t hook_syscall(void *sysent_addr, int32_t syscall);
-kern_return_t unhook_syscall(void *sysent_addr, int32_t syscall);
-
 
 
 

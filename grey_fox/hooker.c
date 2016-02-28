@@ -15,7 +15,8 @@
 #include <kern/clock.h>
 #include <libkern/libkern.h>
 
-
+void hook_syscall(void *sysent_addr, int32_t syscall);
+void unhook_syscall(void *sysent_addr, int32_t syscall);
 
 typedef int (*kern_f)(struct proc *, struct args *, int *);
 static kern_f kernel_functions[SYS_MAXSYSCALL+1] = {0};
@@ -50,51 +51,50 @@ kern_return_t unhook_all_syscalls(void *sysent_addr) {
 
 /* Replaces (based on relevant system call), the syscall function pointer to the original syscall function,
    with an implementation of my own (see bottom). Original pointer is stored in a buffer for unhooking. */
-kern_return_t hook_syscall(void *sysent_addr, int32_t syscall) {
+void hook_syscall(void *sysent_addr, int32_t syscall) {
     switch (version_major) {
         case EL_CAPITAN: {
             struct sysent_yosemite *sysent = (struct sysent_yosemite*)sysent_addr;
             kernel_functions[syscall] = (void*)sysent[syscall].sy_call;
             sysent[syscall].sy_call = (sy_call_t*)hook_functions[syscall];
-            printf("[GREY FOX] Hooked syscall no.: %d\n", syscall);
+            LOG_INFO("Hooked syscall no.: %d\n", syscall);
             break;
         }
         case YOSEMITE: {
             struct sysent_yosemite *sysent = (struct sysent_yosemite*)sysent_addr;
             kernel_functions[syscall] = (void*)sysent[syscall].sy_call;
             sysent[syscall].sy_call = (sy_call_t*)hook_functions[syscall];
-            printf("[GREY FOX] Hooked syscall no.: %d\n", syscall);
+            LOG_INFO("Hooked syscall no.: %d\n", syscall);
             break;
         }
         case MAVERICKS: {
             struct sysent_mavericks *sysent = (struct sysent_mavericks*)sysent_addr;
             kernel_functions[syscall] = (void*)sysent[syscall].sy_call;
             sysent[syscall].sy_call = (sy_call_t*)hook_functions[syscall];
-            printf("[GREY FOX] Hooked syscall no.: %d\n", syscall);
+            LOG_INFO("Hooked syscall no.: %d\n", syscall);
             break;
         }
         default: {
             struct sysent *sysent = (struct sysent*)sysent_addr;
             kernel_functions[syscall] = (void*)sysent[syscall].sy_call;
             sysent[syscall].sy_call = (sy_call_t*)hook_functions[syscall];
-            printf("[GREY FOX] Hooked syscall no.: %d\n", syscall);
+            LOG_INFO("Hooked syscall no.: %d\n", syscall);
             break;
         }
 
     }
-    return KERN_SUCCESS;
 }
 
 /* Restores the original syscall function. */
-kern_return_t unhook_syscall(void *sysent_addr, int32_t syscall) {
+void unhook_syscall(void *sysent_addr, int32_t syscall) {
     switch (version_major) {
         case EL_CAPITAN: {
             if (kernel_functions[syscall] != NULL) {
                 struct sysent_yosemite *sysent = (struct sysent_yosemite*)sysent_addr;
                 sysent[syscall].sy_call = (sy_call_t*)kernel_functions[syscall];
-                printf("[GREY FOX] Unhooked syscall %d\n", syscall);
+                LOG_INFO("Unhooked syscall %d\n", syscall);
             } else {
-                printf("[GREY FOX] Syscall %d was not hooked...\n", syscall);
+                LOG_INFO("Syscall %d was not hooked...\n", syscall);
             }
             break;
         }
@@ -102,9 +102,9 @@ kern_return_t unhook_syscall(void *sysent_addr, int32_t syscall) {
             if (kernel_functions[syscall] != NULL) {
                 struct sysent_yosemite *sysent = (struct sysent_yosemite*)sysent_addr;
                 sysent[syscall].sy_call = (sy_call_t*)kernel_functions[syscall];
-                printf("[GREY FOX] Unhooked syscall %d\n", syscall);
+                LOG_INFO("Unhooked syscall %d\n", syscall);
             } else {
-                printf("[GREY FOX] Syscall %d was not hooked...\n", syscall);
+                LOG_INFO("Syscall %d was not hooked...\n", syscall);
             }
             break;
         }
@@ -112,9 +112,9 @@ kern_return_t unhook_syscall(void *sysent_addr, int32_t syscall) {
             struct sysent_mavericks *sysent = (struct sysent_mavericks*)sysent_addr;
             if (kernel_functions[syscall] != NULL) {
                 sysent[syscall].sy_call = (sy_call_t*)kernel_functions[syscall];
-                printf("[GREY FOX] Unhooked syscall %d\n", syscall);
+                LOG_INFO("Unhooked syscall %d\n", syscall);
             } else {
-                printf("[GREY FOX] Syscall %d was not hooked...\n", syscall);
+                LOG_INFO("Syscall %d was not hooked...\n", syscall);
             }
             break;
         }
@@ -122,19 +122,17 @@ kern_return_t unhook_syscall(void *sysent_addr, int32_t syscall) {
             struct sysent *sysent = (struct sysent*)sysent_addr;
             if (kernel_functions[syscall] != NULL) {
                 sysent[syscall].sy_call = (sy_call_t*)kernel_functions[syscall];
-                printf("[GREY FOX] Unhooked syscall %d\n", syscall);
+                LOG_INFO("Unhooked syscall %d\n", syscall);
             } else {
-                printf("[GREY FOX] Syscall %d was not hooked...\n", syscall);
+                LOG_INFO("Syscall %d was not hooked...\n", syscall);
             }
             break;
         }
-            
     }
-    return KERN_SUCCESS;
 }
 
-// Prevents deadlocks by checking if the process is not a call from syslogd or kernel.
-int should_i_log_this(struct proc *p) {
+/* Prevents deadlocks by checking if the process is not a call from syslogd or kernel. */
+int32_t should_i_log_this(struct proc *p) {
     char processname[MAXCOMLEN+1];
     pid_t pid = proc_pid(p);
     proc_name(pid, processname, sizeof(processname));
@@ -177,29 +175,29 @@ int is_root(struct proc *p) {
 
 
 /* Logs the imporant features of calling process to output. */
-int generic_syscall_log(struct proc *p, struct args *a, char* syscall, kern_f k, int *r) {
+int32_t generic_syscall_log(struct proc *p, struct args *a, char* syscall, kern_f k, int *r) {
     if (should_i_log_this(p)) {
         pid_t pid = proc_pid(p);
         pid_t ppid = proc_ppid(p);
         int superusr = is_root(p);
         char processname[MAXCOMLEN+1];
         proc_name(pid, processname, sizeof(processname));
-        uint32_t secs = 0;
+        clock_sec_t secs = 0;
         uint32_t microsecs = 0;
         clock_get_system_microtime(&secs, &microsecs);
-        uint32_t mins = secs/60;
+        unsigned long mins = secs/60;
         secs = secs%60;
-        uint32_t hours = mins/60;
-        //printf("[GREY FOX] %u, %u\n", secs, microsecs);
+        unsigned long hours = mins/60;
+        //LOG_INFO("%u, %u\n", secs, microsecs);
         if (strcmp("SYS_open", syscall) == 0) {
-            struct open_args* oa = a;
+            struct open_args* oa = (struct open_args*) a;
             char path[MAXPATHLEN];
             size_t dummy = 0;
-            int error = copyinstr((void *)oa->path, (void *)path, MAXPATHLEN, &dummy);
+            int error = copyinstr((void*)oa->path, (void *)path, MAXPATHLEN, &dummy);
             if (!error) {
                 if (strstr(path, "/.") != NULL) {
-                    //printf("[GREY FOX] open hidden file path: %s\n",path);
-                    printf("[GREY FOX] %u:%u:%u,%u; %s; %d; %d; %s; %d; %s;\n",
+                    //LOG_INFO("open hidden file path: %s\n",path);
+                    printf("[GREY FOX] %lu:%lu:%lu,%u; %s; %d; %d; %s; %d; %s;\n",
                            hours,
                            mins,
                            secs,
@@ -213,7 +211,7 @@ int generic_syscall_log(struct proc *p, struct args *a, char* syscall, kern_f k,
                 }
             }
         } else {
-            printf("[GREY FOX] %u:%u:%u,%u; %s; %d; %d; %s; %d;\n",
+            printf("[GREY FOX] %lu:%lu:%lu,%u; %s; %d; %d; %s; %d;\n",
                    hours,
                    mins,
                    secs,
@@ -228,7 +226,7 @@ int generic_syscall_log(struct proc *p, struct args *a, char* syscall, kern_f k,
     return k(p, a, r);
 }
 
-/* This crap is also generated automatically ofc.. */
+/* This crap is generated automatically ofc.. */
 int hook_read(struct proc *p, struct read_args *u, user_ssize_t *r) { return generic_syscall_log(p, u, "SYS_read", kernel_functions[SYS_read], r); }
 int hook_write(struct proc *p, struct write_args *u, user_ssize_t *r) { return generic_syscall_log(p, u, "SYS_write", kernel_functions[SYS_write], r); }
 int hook_open(struct proc *p, struct open_args *u, int *r) { return generic_syscall_log(p, u, "SYS_open", kernel_functions[SYS_open], r); }

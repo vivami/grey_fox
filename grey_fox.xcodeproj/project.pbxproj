@@ -20,7 +20,7 @@
 		C3697F551BEB5B6900AB090C /* grey_fox.c in Sources */ = {isa = PBXBuildFile; fileRef = C3697F541BEB5B6900AB090C /* grey_fox.c */; };
 		C389CA311C032D94000F41A7 /* proc_exec_mon.c in Sources */ = {isa = PBXBuildFile; fileRef = C389CA2F1C032D94000F41A7 /* proc_exec_mon.c */; };
 		C389CA321C032D94000F41A7 /* proc_exec_mon.h in Headers */ = {isa = PBXBuildFile; fileRef = C389CA301C032D94000F41A7 /* proc_exec_mon.h */; };
-		C3E6EDF71BF0DFE600AC1D11 /* hooker.c in Sources */ = {isa = PBXBuildFile; fileRef = C3E6EDF51BF0DFE600AC1D11 /* hooker.c */; settings = {COMPILER_FLAGS = "-w"; }; };
+		C3E6EDF71BF0DFE600AC1D11 /* hooker.c in Sources */ = {isa = PBXBuildFile; fileRef = C3E6EDF51BF0DFE600AC1D11 /* hooker.c */; };
 		C3E6EDF81BF0DFE600AC1D11 /* hooker.h in Headers */ = {isa = PBXBuildFile; fileRef = C3E6EDF61BF0DFE600AC1D11 /* hooker.h */; };
 /* End PBXBuildFile section */
 
