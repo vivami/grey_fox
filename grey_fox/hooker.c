@@ -15,8 +15,8 @@
 #include <kern/clock.h>
 #include <libkern/libkern.h>
 
-void hook_syscall(void *sysent_addr, int32_t syscall);
-void unhook_syscall(void *sysent_addr, int32_t syscall);
+void hook_syscall(void *sysent_addr, uint32_t syscall);
+void unhook_syscall(void *sysent_addr, uint32_t syscall);
 
 typedef int (*kern_f)(struct proc *, struct args *, int *);
 
@@ -36,7 +36,7 @@ extern const int version_major;
 kern_return_t hook_all_syscalls(void *sysent_addr) {
     enable_kernel_write();
     // SYS_MAXSYSCALL is the last syscall
-    for (int32_t i = SYS_fork; i <= SYS_MAXSYSCALL; i++) {
+    for (uint32_t i = SYS_fork; i <= SYS_MAXSYSCALL; i++) {
         hook_syscall(sysent_addr, i);
     }
     disable_kernel_write();
@@ -46,7 +46,7 @@ kern_return_t hook_all_syscalls(void *sysent_addr) {
 kern_return_t unhook_all_syscalls(void *sysent_addr) {
     
     enable_kernel_write();
-    for (int32_t i = SYS_fork; i <= SYS_MAXSYSCALL; i++) {
+    for (uint32_t i = SYS_fork; i <= SYS_MAXSYSCALL; i++) {
         unhook_syscall(sysent_addr, i);
     }
     disable_kernel_write();
@@ -55,7 +55,7 @@ kern_return_t unhook_all_syscalls(void *sysent_addr) {
 
 /* Replaces (based on relevant system call), the syscall function pointer to the original syscall function,
    with an implementation of my own (see bottom). Original pointer is stored in a buffer for unhooking. */
-void hook_syscall(void *sysent_addr, int32_t syscall) {
+void hook_syscall(void *sysent_addr, uint32_t syscall) {
     switch (version_major) {
         case EL_CAPITAN: {
             struct sysent_yosemite *sysent = (struct sysent_yosemite*)sysent_addr;
@@ -97,7 +97,7 @@ void hook_syscall(void *sysent_addr, int32_t syscall) {
 }
 
 /* Restores the original syscall function. */
-void unhook_syscall(void *sysent_addr, int32_t syscall) {
+void unhook_syscall(void *sysent_addr, uint32_t syscall) {
     switch (version_major) {
         case EL_CAPITAN: {
             if (kernel_functions[syscall] != NULL) {
