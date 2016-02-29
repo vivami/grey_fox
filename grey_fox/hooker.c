@@ -2,7 +2,7 @@
 //  hooker.c
 //  grey_fox
 //
-//  Hooks all the relevant system calls and logs them tot system.log for later analysis.
+//  Hooks all the relevant system calls and logs them to system.log for later analysis.
 //
 //  Created by vivami on 04/11/15.
 //  Copyright © 2015 vivami. All rights reserved.
@@ -19,21 +19,24 @@ void hook_syscall(void *sysent_addr, int32_t syscall);
 void unhook_syscall(void *sysent_addr, int32_t syscall);
 
 typedef int (*kern_f)(struct proc *, struct args *, int *);
+
+/* Array of pointers to original syscall functions. Saved to restore before leaving the kernel. */
 static kern_f kernel_functions[SYS_MAXSYSCALL+1] = {0};
 
-static int* (*hook_functions[240]) = {NULL, NULL, hook_fork, hook_read, hook_write, hook_open};
+/* Array of pointers to our own hook functions. The NULL pointers are syscalls we don't hook (to reduce
+ * verbosity of the dataset), or syscalls that are depricated.
+ */
+static int (*hook_functions[SYS_MAXSYSCALL+1]) = {NULL, NULL, hook_fork, hook_read, hook_write, hook_open, NULL, NULL, NULL, hook_link, hook_unlink, NULL, NULL, NULL, hook_mknod, hook_chmod, hook_chown, NULL, hook_getfsstat, NULL, NULL, NULL, NULL, hook_setuid, NULL, NULL, hook_ptrace, NULL, NULL, NULL, NULL, NULL, NULL, hook_access, hook_chflags, hook_fchflags, NULL, NULL, NULL, hook_getppid, NULL, NULL, hook_pipe, hook_getegid, NULL, NULL, hook_sigaction, NULL, NULL, hook_getlogin, hook_setlogin, hook_acct, hook_sigpending, NULL, hook_ioctl, hook_reboot, hook_revoke, hook_symlink, NULL, hook_execve, hook_umask, hook_chroot, NULL, NULL, NULL, hook_msync, hook_vfork, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, hook_mincore, hook_getgroups, hook_setgroups, hook_getpgrp, hook_setpgid, NULL, NULL, hook_swapon, hook_getitimer, NULL, NULL, hook_getdtablesize, hook_dup2, NULL, NULL, NULL, NULL, NULL, hook_setpriority, hook_socket, hook_connect, NULL, hook_getpriority, NULL, NULL, NULL, hook_bind, hook_setsockopt, hook_listen, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, hook_getsockopt, NULL, hook_readv, hook_writev, hook_settimeofday, hook_fchown, hook_fchmod, NULL, hook_setreuid, hook_setregid, hook_rename, NULL, NULL, hook_flock, hook_mkfifo, hook_sendto, hook_shutdown, hook_socketpair, NULL, hook_rmdir, hook_utimes, hook_futimes, NULL, NULL, hook_gethostuuid, NULL, NULL, NULL, NULL, hook_setsid, NULL, NULL, NULL, hook_getpgid, hook_setprivexec, NULL, hook_pwrite, hook_nfssvc, NULL, hook_statfs, hook_fstatfs, hook_unmount, NULL, hook_getfh, NULL, NULL, NULL, hook_quotactl, NULL, hook_mount, NULL, NULL, NULL, NULL, NULL, hook_waitid, NULL, NULL, NULL, NULL, NULL, NULL, hook_kdebug_trace, hook_setgid, hook_setegid, hook_seteuid, NULL, hook_chud, NULL, hook_fdatasync, hook_stat, hook_fstat, hook_lstat, hook_pathconf, hook_fpathconf, NULL, hook_getrlimit, hook_setrlimit, hook_getdirentries, NULL, NULL, NULL, hook_truncate, hook_ftruncate, hook___sysctl, hook_mlock, hook_munlock, hook_undelete, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, hook_setattrlist, hook_getdirentriesattr, hook_exchangedata, NULL, hook_searchfs, hook_delete, hook_copyfile, hook_fgetattrlist, hook_fsetattrlist, hook_poll, hook_watchevent, hook_waitevent, hook_modwatch, NULL, hook_fgetxattr, hook_setxattr, hook_fsetxattr, hook_removexattr, hook_fremovexattr, hook_listxattr, hook_flistxattr, hook_fsctl, hook_initgroups, hook_posix_spawn, hook_ffsctl, NULL, hook_nfsclnt, NULL, NULL, hook_minherit, hook_semsys, hook_msgsys, hook_shmsys, hook_semctl, hook_semget, hook_semop, NULL, hook_msgctl, hook_msgget, hook_msgsnd, hook_msgrcv, hook_shmat, hook_shmctl, hook_shmdt, hook_shmget, hook_shm_open, hook_shm_unlink, NULL, hook_sem_close, hook_sem_unlink, hook_sem_wait, hook_sem_trywait, hook_sem_post, NULL, hook_sem_init, hook_sem_destroy, hook_open_extended, hook_umask_extended, hook_stat_extended, hook_lstat_extended, hook_fstat_extended, hook_chmod_extended, hook_fchmod_extended, hook_access_extended, hook_settid, NULL, hook_setsgroups, hook_getsgroups, hook_setwgroups, hook_getwgroups, hook_mkfifo_extended, NULL, hook_identitysvc, hook_shared_region_check_np, NULL, hook_vm_pressure_monitor, hook_psynch_rw_longrdlock, hook_psynch_rw_yieldwrlock, hook_psynch_rw_downgrade, hook_psynch_rw_upgrade, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, hook_psynch_rw_unlock2, hook_getsid, hook_settid_with_pid, hook_psynch_cvclrprepost, hook_aio_fsync, hook_aio_return, hook_aio_suspend, hook_aio_cancel, hook_aio_error, hook_aio_read, hook_aio_write, hook_lio_listio, NULL, NULL, NULL, hook_mlockall, hook_munlockall, NULL, NULL, hook___pthread_kill, NULL, hook___sigwait, NULL, hook___pthread_markcancel, NULL, NULL, NULL, NULL, hook_sendfile, NULL, NULL, NULL, hook_stat64_extended, hook_lstat64_extended, hook_fstat64_extended, NULL, NULL, NULL, NULL, NULL, NULL, hook_audit, hook_auditon, NULL, hook_getauid, hook_setauid, NULL, NULL, NULL, hook_setaudit_addr, hook_auditctl, NULL, NULL, NULL, NULL, hook_lchown, hook_stack_snapshot, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, hook___mac_execve, NULL, hook___mac_get_file, hook___mac_set_file, hook___mac_get_link, hook___mac_set_link, hook___mac_get_proc, hook___mac_set_proc, hook___mac_get_fd, hook___mac_set_fd, hook___mac_get_pid, hook___mac_get_lcid, hook___mac_get_lctx, hook___mac_set_lctx, hook_setlcid, hook_getlcid, NULL, NULL, NULL, NULL, hook_wait4_nocancel, hook_recvmsg_nocancel, hook_sendmsg_nocancel, hook_recvfrom_nocancel, hook_accept_nocancel, hook_msync_nocancel, NULL, hook_select_nocancel, hook_fsync_nocancel, hook_connect_nocancel, hook_sigsuspend_nocancel, hook_readv_nocancel, hook_writev_nocancel, hook_sendto_nocancel, hook_pread_nocancel, hook_pwrite_nocancel, hook_waitid_nocancel, hook_poll_nocancel, hook_msgsnd_nocancel, hook_msgrcv_nocancel, hook_sem_wait_nocancel, hook_aio_suspend_nocancel, hook___sigwait_nocancel, hook___semwait_signal_nocancel, hook___mac_mount, hook___mac_get_mount, hook___mac_getfsstat, NULL, hook_audit_session_self, hook_audit_session_join, hook_fileport_makeport, hook_fileport_makefd, hook_audit_session_port, hook_pid_suspend, hook_pid_resume, NULL, NULL, NULL, hook_shared_region_map_and_slide_np, hook_kas_info, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
 
 extern const int version_major;
 
 
 kern_return_t hook_all_syscalls(void *sysent_addr) {
-
     enable_kernel_write();
     // SYS_MAXSYSCALL is the last syscall
-    for (int32_t i = 5; i <= 5; i++) {
+    for (int32_t i = SYS_open; i <= SYS_MAXSYSCALL; i++) {
         hook_syscall(sysent_addr, i);
     }
-    
     disable_kernel_write();
     return KERN_SUCCESS;
 }
@@ -41,8 +44,7 @@ kern_return_t hook_all_syscalls(void *sysent_addr) {
 kern_return_t unhook_all_syscalls(void *sysent_addr) {
     
     enable_kernel_write();
-    
-    for (int32_t i = 5; i <= 5; i++) {
+    for (int32_t i = SYS_open; i <= SYS_MAXSYSCALL; i++) {
         unhook_syscall(sysent_addr, i);
     }
     disable_kernel_write();
@@ -55,33 +57,40 @@ void hook_syscall(void *sysent_addr, int32_t syscall) {
     switch (version_major) {
         case EL_CAPITAN: {
             struct sysent_yosemite *sysent = (struct sysent_yosemite*)sysent_addr;
-            kernel_functions[syscall] = (void*)sysent[syscall].sy_call;
-            sysent[syscall].sy_call = (sy_call_t*)hook_functions[syscall];
-            LOG_INFO("Hooked syscall no.: %d\n", syscall);
+            if (!hook_functions[syscall]) {
+                kernel_functions[syscall] = (void*)sysent[syscall].sy_call;
+                sysent[syscall].sy_call = (sy_call_t*)hook_functions[syscall];
+                LOG_INFO("Hooked syscall no.: %d\n", syscall);
+            }
             break;
         }
         case YOSEMITE: {
             struct sysent_yosemite *sysent = (struct sysent_yosemite*)sysent_addr;
-            kernel_functions[syscall] = (void*)sysent[syscall].sy_call;
-            sysent[syscall].sy_call = (sy_call_t*)hook_functions[syscall];
-            LOG_INFO("Hooked syscall no.: %d\n", syscall);
+            if (hook_functions[syscall] != NULL) {
+                kernel_functions[syscall] = (void*)sysent[syscall].sy_call;
+                sysent[syscall].sy_call = (sy_call_t*)hook_functions[syscall];
+                LOG_INFO("Hooked syscall no.: %d\n", syscall);
+            }
             break;
         }
         case MAVERICKS: {
             struct sysent_mavericks *sysent = (struct sysent_mavericks*)sysent_addr;
-            kernel_functions[syscall] = (void*)sysent[syscall].sy_call;
-            sysent[syscall].sy_call = (sy_call_t*)hook_functions[syscall];
-            LOG_INFO("Hooked syscall no.: %d\n", syscall);
+            if (!hook_functions[syscall]) {
+                kernel_functions[syscall] = (void*)sysent[syscall].sy_call;
+                sysent[syscall].sy_call = (sy_call_t*)hook_functions[syscall];
+                LOG_INFO("Hooked syscall no.: %d\n", syscall);
+            }
             break;
         }
         default: {
             struct sysent *sysent = (struct sysent*)sysent_addr;
-            kernel_functions[syscall] = (void*)sysent[syscall].sy_call;
-            sysent[syscall].sy_call = (sy_call_t*)hook_functions[syscall];
-            LOG_INFO("Hooked syscall no.: %d\n", syscall);
+            if (!hook_functions[syscall]) {
+                kernel_functions[syscall] = (void*)sysent[syscall].sy_call;
+                sysent[syscall].sy_call = (sy_call_t*)hook_functions[syscall];
+                LOG_INFO("Hooked syscall no.: %d\n", syscall);
+            }
             break;
         }
-
     }
 }
 
@@ -167,61 +176,61 @@ char *substring;		/* Substring to try to find in string. */
     return (char *) 0;
 }
 
-int is_root(struct proc *p) {
-    int superusr = proc_suser(p);
-    return superusr == 0;
+/* Returns 1 iff process p has root privs. */
+uint32_t is_root(struct proc *p) {
+    return proc_suser(p) == 0;
 }
 
 
 
 /* Logs the imporant features of calling process to output. */
 int32_t generic_syscall_log(struct proc *p, struct args *a, char* syscall, kern_f k, int *r) {
-    if (should_i_log_this(p)) {
-        pid_t pid = proc_pid(p);
-        pid_t ppid = proc_ppid(p);
-        int superusr = is_root(p);
-        char processname[MAXCOMLEN+1];
-        proc_name(pid, processname, sizeof(processname));
-        clock_sec_t secs = 0;
-        uint32_t microsecs = 0;
-        clock_get_system_microtime(&secs, &microsecs);
-        unsigned long mins = secs/60;
-        secs = secs%60;
-        unsigned long hours = mins/60;
-        //LOG_INFO("%u, %u\n", secs, microsecs);
-        if (strcmp("SYS_open", syscall) == 0) {
-            struct open_args* oa = (struct open_args*) a;
-            char path[MAXPATHLEN];
-            size_t dummy = 0;
-            int error = copyinstr((void*)oa->path, (void *)path, MAXPATHLEN, &dummy);
-            if (!error) {
-                if (strstr(path, "/.") != NULL) {
-                    //LOG_INFO("open hidden file path: %s\n",path);
-                    printf("[GREY FOX] %lu:%lu:%lu,%u; %s; %d; %d; %s; %d; %s;\n",
-                           hours,
-                           mins,
-                           secs,
-                           microsecs,
-                           processname,
-                           pid,
-                           ppid,
-                           syscall,
-                           superusr,
-                           path);
-                }
+    if (!should_i_log_this(p)) {
+        return k(p, a, r);
+    }
+    pid_t pid = proc_pid(p);
+    pid_t ppid = proc_ppid(p);
+    uint32_t superusr = is_root(p);
+    char processname[MAXCOMLEN+1];
+    proc_name(pid, processname, sizeof(processname));
+    clock_sec_t secs = 0;
+    uint32_t microsecs = 0;
+    clock_get_system_microtime(&secs, &microsecs);
+    unsigned long mins = secs/60;
+    secs = secs%60;
+    unsigned long hours = mins/60;
+    if (strcmp("SYS_open", syscall) == 0) {
+        struct open_args* oa = (struct open_args*) a;
+        char path[MAXPATHLEN];
+        size_t dummy = 0;
+        int error = copyinstr((void*)oa->path, (void *)path, MAXPATHLEN, &dummy);
+        if (!error) {
+            if (strstr(path, "/.") != NULL) {
+                //LOG_INFO("open hidden file path: %s\n",path);
+                printf("[GREY FOX] %lu:%lu:%lu,%u; %s; %d; %d; %s; %d; %s;\n",
+                       hours,
+                       mins,
+                       secs,
+                       microsecs,
+                       processname,
+                       pid,
+                       ppid,
+                       syscall,
+                       superusr,
+                       path);
             }
-        } else {
-            printf("[GREY FOX] %lu:%lu:%lu,%u; %s; %d; %d; %s; %d;\n",
-                   hours,
-                   mins,
-                   secs,
-                   microsecs,
-                   processname,
-                   pid,
-                   ppid,
-                   syscall,
-                   superusr);
         }
+    } else {
+        printf("[GREY FOX] %lu:%lu:%lu,%u; %s; %d; %d; %s; %d;\n",
+               hours,
+               mins,
+               secs,
+               microsecs,
+               processname,
+               pid,
+               ppid,
+               syscall,
+               superusr);
     }
     return k(p, a, r);
 }
