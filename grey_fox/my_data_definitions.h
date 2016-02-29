@@ -72,12 +72,6 @@ struct sysent_yosemite {
     uint16_t    sy_arg_bytes;
 };
 
-struct sysent_elcap {
-    sy_call_t   *sy_call;
-    int32_t     sy_return_type;
-    int16_t     sy_narg;
-    uint16_t    sy_arg_bytes;
-};
 
 #define DISABLE 0
 #define ENABLE 1
@@ -87,13 +81,13 @@ struct sysent_elcap {
 #define EL_CAPITAN  15
 
 #if DEBUG
-#define LOG_DEBUG(fmt, ...) printf("[DEBUG] " fmt "\n", ## __VA_ARGS__)
+#define LOG_DEBUG(fmt, ...) printf("[GREY FOX DEBUG] " fmt "\n", ## __VA_ARGS__)
 #else
 #define LOG_DEBUG(fmt, ...) do {} while (0)
 #endif
 
 #define LOG_MSG(...) printf(__VA_ARGS__)
-#define LOG_ERROR(fmt, ...) printf("[ERROR] " fmt "\n", ## __VA_ARGS__)
-#define LOG_INFO(fmt, ...) printf("[INFO] " fmt "\n", ## __VA_ARGS__)
+#define LOG_ERROR(fmt, ...) printf("[GREY FOX ERROR] " fmt "\n", ## __VA_ARGS__)
+#define LOG_INFO(fmt, ...) printf("[GREY FOX INFO] " fmt "\n", ## __VA_ARGS__)
 
 #endif

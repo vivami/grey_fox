@@ -12,6 +12,7 @@
 
 
 #include "proc_exec_mon.h"
+#include "my_data_definitions.h"
 #include <IOKit/IOLib.h>
 #include <sys/kauth.h>
 #include <sys/vnode.h>
@@ -332,14 +333,16 @@ kern_return_t plug_kauth_listener(void) {
 
     kauthListener_file_op = kauth_listen_scope(KAUTH_SCOPE_FILEOP, &FileOpScopeListener, NULL);
     if (kauthListener_file_op == NULL) {
-        printf("[GREY FOX] ERROR: failed to plug KAuth KAUTH_SCOPE_FILEOP listener\n");
+        LOG_ERROR("Failed to plug KAuth KAUTH_SCOPE_FILEOP listener.");
         return KERN_FAILURE;
     }
+    LOG_INFO("Plugged KAUTH_SCOPE_FILEOP listener.");
     kauthListener_vnode = kauth_listen_scope(KAUTH_SCOPE_VNODE, &VnodeScopeListener, NULL);
     if (kauthListener_vnode == NULL) {
-        printf("[GREY FOX] ERROR: failed to plug KAuth KAUTH_SCOPE_VNODE listener\n");
+        LOG_ERROR("Failed to plug KAuth KAUTH_SCOPE_VNODE listener.");
         return KERN_FAILURE;
     }
+    LOG_INFO("Plugged KAUTH_SCOPE_VNODE listener.");
     
     return KERN_SUCCESS;
 }

@@ -2,7 +2,7 @@
 //  hooker.c
 //  grey_fox
 //
-//  Hooks all the relevant system calls and logs them tot system.log for later analysis.
+//  Hooks all the relevant system calls and logs them to system.log for later analysis.
 //
 //  Created by vivami on 04/11/15.
 //  Copyright © 2015 vivami. All rights reserved.
@@ -10,30 +10,35 @@
 
 #include "cpu_protections.h"
 #include "hooker.h"
-
 #include <sys/syslimits.h>
 #include <sys/proc.h>
 #include <kern/clock.h>
+#include <libkern/libkern.h>
 
+void hook_syscall(void *sysent_addr, int32_t syscall);
+void unhook_syscall(void *sysent_addr, int32_t syscall);
 
 typedef int (*kern_f)(struct proc *, struct args *, int *);
+
+/* Array of pointers to original syscall functions. Saved to restore before leaving the kernel. */
 static kern_f kernel_functions[SYS_MAXSYSCALL+1] = {0};
+
+/* Array of pointers to our own hook functions. The NULL pointers are syscalls we don't hook (to reduce
+ * verbosity of the dataset), or syscalls that are depricated.
+ */
+//static int (*hook_functions[SYS_MAXSYSCALL+1]) = {NULL, NULL, hook_fork, hook_read, hook_write, hook_open};
+
+static int (*hook_functions[SYS_MAXSYSCALL+1]) = {NULL, NULL, hook_fork, NULL, hook_write, NULL, NULL, NULL, NULL, hook_link, hook_unlink, NULL, NULL, NULL, hook_mknod, hook_chmod, hook_chown, NULL, hook_getfsstat, NULL, NULL, NULL, NULL, hook_setuid, NULL, NULL, hook_ptrace, NULL, NULL, NULL, NULL, NULL, NULL, hook_access, hook_chflags, hook_fchflags, NULL, NULL, NULL, hook_getppid, NULL, NULL, hook_pipe, hook_getegid, NULL, NULL, hook_sigaction, NULL, NULL, hook_getlogin, hook_setlogin, hook_acct, hook_sigpending, NULL, hook_ioctl, hook_reboot, hook_revoke, hook_symlink, NULL, hook_execve, hook_umask, hook_chroot, NULL, NULL, NULL, hook_msync, hook_vfork, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, hook_mincore, hook_getgroups, hook_setgroups, hook_getpgrp, hook_setpgid, NULL, NULL, hook_swapon, hook_getitimer, NULL, NULL, hook_getdtablesize, hook_dup2, NULL, NULL, NULL, NULL, NULL, hook_setpriority, hook_socket, hook_connect, NULL, hook_getpriority, NULL, NULL, NULL, hook_bind, hook_setsockopt, hook_listen, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, hook_getsockopt, NULL, hook_readv, hook_writev, hook_settimeofday, hook_fchown, hook_fchmod, NULL, hook_setreuid, hook_setregid, hook_rename, NULL, NULL, hook_flock, hook_mkfifo, hook_sendto, hook_shutdown, hook_socketpair, NULL, hook_rmdir, hook_utimes, hook_futimes, NULL, NULL, hook_gethostuuid, NULL, NULL, NULL, NULL, hook_setsid, NULL, NULL, NULL, hook_getpgid, hook_setprivexec, NULL, hook_pwrite, hook_nfssvc, NULL, hook_statfs, hook_fstatfs, hook_unmount, NULL, hook_getfh, NULL, NULL, NULL, hook_quotactl, NULL, hook_mount, NULL, NULL, NULL, NULL, NULL, hook_waitid, NULL, NULL, NULL, NULL, NULL, NULL, hook_kdebug_trace, hook_setgid, hook_setegid, hook_seteuid, NULL, hook_chud, NULL, hook_fdatasync, hook_stat, hook_fstat, hook_lstat, hook_pathconf, hook_fpathconf, NULL, hook_getrlimit, hook_setrlimit, hook_getdirentries, NULL, NULL, NULL, hook_truncate, hook_ftruncate, hook___sysctl, hook_mlock, hook_munlock, hook_undelete, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, hook_setattrlist, hook_getdirentriesattr, hook_exchangedata, NULL, hook_searchfs, hook_delete, hook_copyfile, hook_fgetattrlist, hook_fsetattrlist, hook_poll, hook_watchevent, hook_waitevent, hook_modwatch, NULL, hook_fgetxattr, hook_setxattr, hook_fsetxattr, hook_removexattr, hook_fremovexattr, hook_listxattr, hook_flistxattr, hook_fsctl, hook_initgroups, hook_posix_spawn, hook_ffsctl, NULL, hook_nfsclnt, NULL, NULL, hook_minherit, hook_semsys, hook_msgsys, hook_shmsys, hook_semctl, hook_semget, hook_semop, NULL, hook_msgctl, hook_msgget, hook_msgsnd, hook_msgrcv, hook_shmat, hook_shmctl, hook_shmdt, hook_shmget, hook_shm_open, hook_shm_unlink, NULL, hook_sem_close, hook_sem_unlink, hook_sem_wait, hook_sem_trywait, hook_sem_post, NULL, hook_sem_init, hook_sem_destroy, hook_open_extended, hook_umask_extended, hook_stat_extended, hook_lstat_extended, hook_fstat_extended, hook_chmod_extended, hook_fchmod_extended, hook_access_extended, hook_settid, NULL, hook_setsgroups, hook_getsgroups, hook_setwgroups, hook_getwgroups, hook_mkfifo_extended, NULL, hook_identitysvc, hook_shared_region_check_np, NULL, hook_vm_pressure_monitor, hook_psynch_rw_longrdlock, hook_psynch_rw_yieldwrlock, hook_psynch_rw_downgrade, hook_psynch_rw_upgrade, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, hook_psynch_rw_unlock2, hook_getsid, hook_settid_with_pid, hook_psynch_cvclrprepost, hook_aio_fsync, hook_aio_return, hook_aio_suspend, hook_aio_cancel, hook_aio_error, hook_aio_read, hook_aio_write, hook_lio_listio, NULL, NULL, NULL, hook_mlockall, hook_munlockall, NULL, NULL, hook___pthread_kill, NULL, hook___sigwait, NULL, hook___pthread_markcancel, NULL, NULL, NULL, NULL, hook_sendfile, NULL, NULL, NULL, hook_stat64_extended, hook_lstat64_extended, hook_fstat64_extended, NULL, NULL, NULL, NULL, NULL, NULL, hook_audit, hook_auditon, NULL, hook_getauid, hook_setauid, NULL, NULL, NULL, hook_setaudit_addr, hook_auditctl, NULL, NULL, NULL, NULL, hook_lchown, hook_stack_snapshot, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, hook___mac_execve, NULL, hook___mac_get_file, hook___mac_set_file, hook___mac_get_link, hook___mac_set_link, hook___mac_get_proc, hook___mac_set_proc, hook___mac_get_fd, hook___mac_set_fd, hook___mac_get_pid, hook___mac_get_lcid, hook___mac_get_lctx, hook___mac_set_lctx, hook_setlcid, hook_getlcid, NULL, NULL, NULL, NULL, hook_wait4_nocancel, hook_recvmsg_nocancel, hook_sendmsg_nocancel, hook_recvfrom_nocancel, hook_accept_nocancel, hook_msync_nocancel, NULL, hook_select_nocancel, hook_fsync_nocancel, hook_connect_nocancel, hook_sigsuspend_nocancel, hook_readv_nocancel, hook_writev_nocancel, hook_sendto_nocancel, hook_pread_nocancel, hook_pwrite_nocancel, hook_waitid_nocancel, hook_poll_nocancel, hook_msgsnd_nocancel, hook_msgrcv_nocancel, hook_sem_wait_nocancel, hook_aio_suspend_nocancel, hook___sigwait_nocancel, hook___semwait_signal_nocancel, hook___mac_mount, hook___mac_get_mount, hook___mac_getfsstat, NULL, hook_audit_session_self, hook_audit_session_join, hook_fileport_makeport, hook_fileport_makefd, hook_audit_session_port, hook_pid_suspend, hook_pid_resume, NULL, NULL, NULL, hook_shared_region_map_and_slide_np, hook_kas_info, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
 
 extern const int version_major;
 
-/* Change this depedning on which OSX you want to run grey fox. Yosemite by default */
-struct sysent_yosemite *sysent;
-//struct sysent_mavericks *sysent;
-//struct sysent *sysent;
 
 kern_return_t hook_all_syscalls(void *sysent_addr) {
-
     enable_kernel_write();
     // SYS_MAXSYSCALL is the last syscall
     for (int32_t i = SYS_fork; i <= SYS_MAXSYSCALL; i++) {
         hook_syscall(sysent_addr, i);
     }
-    
     disable_kernel_write();
     return KERN_SUCCESS;
 }
@@ -41,1311 +46,104 @@ kern_return_t hook_all_syscalls(void *sysent_addr) {
 kern_return_t unhook_all_syscalls(void *sysent_addr) {
     
     enable_kernel_write();
-    
     for (int32_t i = SYS_fork; i <= SYS_MAXSYSCALL; i++) {
         unhook_syscall(sysent_addr, i);
     }
-    
     disable_kernel_write();
     return KERN_SUCCESS;
 }
 
 /* Replaces (based on relevant system call), the syscall function pointer to the original syscall function,
    with an implementation of my own (see bottom). Original pointer is stored in a buffer for unhooking. */
-kern_return_t hook_syscall(void *sysent_addr, int32_t syscall) {
+void hook_syscall(void *sysent_addr, int32_t syscall) {
     switch (version_major) {
-        case EL_CAPITAN:
-            sysent = (struct sysent_yosemite*)sysent_addr;
-            break;
-        case YOSEMITE:
-            sysent = (struct sysent_yosemite*)sysent_addr;
-            break;
-        case MAVERICKS:
-            sysent = (struct sysent_mavericks*)sysent_addr;
-            break;
-        default:
-            sysent = (struct sysent*)sysent_addr;
+        case EL_CAPITAN: {
+            struct sysent_yosemite *sysent = (struct sysent_yosemite*)sysent_addr;
+            if (hook_functions[syscall]) {
+                kernel_functions[syscall] = (void*)sysent[syscall].sy_call;
+                sysent[syscall].sy_call = (sy_call_t*)hook_functions[syscall];
+                LOG_INFO("Hooked syscall no.: %d\n", syscall);
+            }
             break;
         }
-
-    /* This is also extremely ugly (and was automatically generated using a Python script).
-       Although I'm too dumb to come up with something more elegant */
-    switch (syscall) {
-        case SYS_read:
-            kernel_functions[SYS_read] = (void*)sysent[SYS_read].sy_call;
-            sysent[SYS_read].sy_call = hook_read;
-            printf("[GREY FOX] Hooked SYS_read\n");
-            break;
-        case SYS_write:
-            kernel_functions[SYS_write] = (void*)sysent[SYS_write].sy_call;
-            sysent[SYS_write].sy_call = hook_write;
-            printf("[GREY FOX] Hooked SYS_write\n");
-            break;
-        case SYS_open:
-            kernel_functions[SYS_open] = (void*)sysent[SYS_open].sy_call;
-            sysent[SYS_open].sy_call = hook_open;
-            printf("[GREY FOX] Hooked SYS_open\n");
-            break;
-        case SYS_link:
-            kernel_functions[SYS_link] = (void*)sysent[SYS_link].sy_call;
-            sysent[SYS_link].sy_call = hook_link;
-            printf("[GREY FOX] Hooked SYS_link\n");
-            break;
-        case SYS_unlink:
-            kernel_functions[SYS_unlink] = (void*)sysent[SYS_unlink].sy_call;
-            sysent[SYS_unlink].sy_call = hook_unlink;
-            printf("[GREY FOX] Hooked SYS_unlink\n");
-            break;
-        case SYS_fork:
-            kernel_functions[SYS_fork] = (void*)sysent[SYS_fork].sy_call;
-            sysent[SYS_fork].sy_call = hook_fork;
-            printf("[GREY FOX] Hooked SYS_fork\n");
-            break;
-        case SYS_mknod:
-            kernel_functions[SYS_mknod] = (void*)sysent[SYS_mknod].sy_call;
-            sysent[SYS_mknod].sy_call = hook_mknod;
-            printf("[GREY FOX] Hooked SYS_mknod\n");
-            break;
-        case SYS_chmod:
-            kernel_functions[SYS_chmod] = (void*)sysent[SYS_chmod].sy_call;
-            sysent[SYS_chmod].sy_call = hook_chmod;
-            printf("[GREY FOX] Hooked SYS_chmod\n");
-            break;
-        case SYS_chown:
-            kernel_functions[SYS_chown] = (void*)sysent[SYS_chown].sy_call;
-            sysent[SYS_chown].sy_call = hook_chown;
-            printf("[GREY FOX] Hooked SYS_chown\n");
-            break;
-        case SYS_getfsstat:
-            kernel_functions[SYS_getfsstat] = (void*)sysent[SYS_getfsstat].sy_call;
-            sysent[SYS_getfsstat].sy_call = hook_getfsstat;
-            printf("[GREY FOX] Hooked SYS_getfsstat\n");
-            break;
-        case SYS_setuid:
-            kernel_functions[SYS_setuid] = (void*)sysent[SYS_setuid].sy_call;
-            sysent[SYS_setuid].sy_call = hook_setuid;
-            printf("[GREY FOX] Hooked SYS_setuid\n");
-            break;
-        case SYS_ptrace:
-            kernel_functions[SYS_ptrace] = (void*)sysent[SYS_ptrace].sy_call;
-            sysent[SYS_ptrace].sy_call = hook_ptrace;
-            printf("[GREY FOX] Hooked SYS_ptrace\n");
-            break;
-        case SYS_access:
-            kernel_functions[SYS_access] = (void*)sysent[SYS_access].sy_call;
-            sysent[SYS_access].sy_call = hook_access;
-            printf("[GREY FOX] Hooked SYS_access\n");
-            break;
-        case SYS_chflags:
-            kernel_functions[SYS_chflags] = (void*)sysent[SYS_chflags].sy_call;
-            sysent[SYS_chflags].sy_call = hook_chflags;
-            printf("[GREY FOX] Hooked SYS_chflags\n");
-            break;
-        case SYS_fchflags:
-            kernel_functions[SYS_fchflags] = (void*)sysent[SYS_fchflags].sy_call;
-            sysent[SYS_fchflags].sy_call = hook_fchflags;
-            printf("[GREY FOX] Hooked SYS_fchflags\n");
-            break;
-        case SYS_getppid:
-            kernel_functions[SYS_getppid] = (void*)sysent[SYS_getppid].sy_call;
-            sysent[SYS_getppid].sy_call = hook_getppid;
-            printf("[GREY FOX] Hooked SYS_getppid\n");
-            break;
-        case SYS_pipe:
-            kernel_functions[SYS_pipe] = (void*)sysent[SYS_pipe].sy_call;
-            sysent[SYS_pipe].sy_call = hook_pipe;
-            printf("[GREY FOX] Hooked SYS_pipe\n");
-            break;
-        case SYS_getegid:
-            kernel_functions[SYS_getegid] = (void*)sysent[SYS_getegid].sy_call;
-            sysent[SYS_getegid].sy_call = hook_getegid;
-            printf("[GREY FOX] Hooked SYS_getegid\n");
-            break;
-        case SYS_sigaction:
-            kernel_functions[SYS_sigaction] = (void*)sysent[SYS_sigaction].sy_call;
-            sysent[SYS_sigaction].sy_call = hook_sigaction;
-            printf("[GREY FOX] Hooked SYS_sigaction\n");
-            break;
-        case SYS_getlogin:
-            kernel_functions[SYS_getlogin] = (void*)sysent[SYS_getlogin].sy_call;
-            sysent[SYS_getlogin].sy_call = hook_getlogin;
-            printf("[GREY FOX] Hooked SYS_getlogin\n");
-            break;
-        case SYS_setlogin:
-            kernel_functions[SYS_setlogin] = (void*)sysent[SYS_setlogin].sy_call;
-            sysent[SYS_setlogin].sy_call = hook_setlogin;
-            printf("[GREY FOX] Hooked SYS_setlogin\n");
-            break;
-        case SYS_acct:
-            kernel_functions[SYS_acct] = (void*)sysent[SYS_acct].sy_call;
-            sysent[SYS_acct].sy_call = hook_acct;
-            printf("[GREY FOX] Hooked SYS_acct\n");
-            break;
-        case SYS_sigpending:
-            kernel_functions[SYS_sigpending] = (void*)sysent[SYS_sigpending].sy_call;
-            sysent[SYS_sigpending].sy_call = hook_sigpending;
-            printf("[GREY FOX] Hooked SYS_sigpending\n");
-            break;
-        case SYS_reboot:
-            kernel_functions[SYS_reboot] = (void*)sysent[SYS_reboot].sy_call;
-            sysent[SYS_reboot].sy_call = hook_reboot;
-            printf("[GREY FOX] Hooked SYS_reboot\n");
-            break;
-        case SYS_revoke:
-            kernel_functions[SYS_revoke] = (void*)sysent[SYS_revoke].sy_call;
-            sysent[SYS_revoke].sy_call = hook_revoke;
-            printf("[GREY FOX] Hooked SYS_revoke\n");
-            break;
-        case SYS_symlink:
-            kernel_functions[SYS_symlink] = (void*)sysent[SYS_symlink].sy_call;
-            sysent[SYS_symlink].sy_call = hook_symlink;
-            printf("[GREY FOX] Hooked SYS_symlink\n");
-            break;
-        case SYS_execve:
-            kernel_functions[SYS_execve] = (void*)sysent[SYS_execve].sy_call;
-            sysent[SYS_execve].sy_call = hook_execve;
-            printf("[GREY FOX] Hooked SYS_execve\n");
-            break;
-        case SYS_umask:
-            kernel_functions[SYS_umask] = (void*)sysent[SYS_umask].sy_call;
-            sysent[SYS_umask].sy_call = hook_umask;
-            printf("[GREY FOX] Hooked SYS_umask\n");
-            break;
-        case SYS_chroot:
-            kernel_functions[SYS_chroot] = (void*)sysent[SYS_chroot].sy_call;
-            sysent[SYS_chroot].sy_call = hook_chroot;
-            printf("[GREY FOX] Hooked SYS_chroot\n");
-            break;
-        case SYS_msync:
-            kernel_functions[SYS_msync] = (void*)sysent[SYS_msync].sy_call;
-            sysent[SYS_msync].sy_call = hook_msync;
-            printf("[GREY FOX] Hooked SYS_msync\n");
-            break;
-        case SYS_vfork:
-            kernel_functions[SYS_vfork] = (void*)sysent[SYS_vfork].sy_call;
-            sysent[SYS_vfork].sy_call = hook_vfork;
-            printf("[GREY FOX] Hooked SYS_vfork\n");
-            break;
-        case SYS_mincore:
-            kernel_functions[SYS_mincore] = (void*)sysent[SYS_mincore].sy_call;
-            sysent[SYS_mincore].sy_call = hook_mincore;
-            printf("[GREY FOX] Hooked SYS_mincore\n");
-            break;
-        case SYS_getgroups:
-            kernel_functions[SYS_getgroups] = (void*)sysent[SYS_getgroups].sy_call;
-            sysent[SYS_getgroups].sy_call = hook_getgroups;
-            printf("[GREY FOX] Hooked SYS_getgroups\n");
-            break;
-        case SYS_setgroups:
-            kernel_functions[SYS_setgroups] = (void*)sysent[SYS_setgroups].sy_call;
-            sysent[SYS_setgroups].sy_call = hook_setgroups;
-            printf("[GREY FOX] Hooked SYS_setgroups\n");
-            break;
-        case SYS_getpgrp:
-            kernel_functions[SYS_getpgrp] = (void*)sysent[SYS_getpgrp].sy_call;
-            sysent[SYS_getpgrp].sy_call = hook_getpgrp;
-            printf("[GREY FOX] Hooked SYS_getpgrp\n");
-            break;
-        case SYS_setpgid:
-            kernel_functions[SYS_setpgid] = (void*)sysent[SYS_setpgid].sy_call;
-            sysent[SYS_setpgid].sy_call = hook_setpgid;
-            printf("[GREY FOX] Hooked SYS_setpgid\n");
-            break;
-        case SYS_swapon:
-            kernel_functions[SYS_swapon] = (void*)sysent[SYS_swapon].sy_call;
-            sysent[SYS_swapon].sy_call = hook_swapon;
-            printf("[GREY FOX] Hooked SYS_swapon\n");
-            break;
-        case SYS_getitimer:
-            kernel_functions[SYS_getitimer] = (void*)sysent[SYS_getitimer].sy_call;
-            sysent[SYS_getitimer].sy_call = hook_getitimer;
-            printf("[GREY FOX] Hooked SYS_getitimer\n");
-            break;
-        case SYS_getdtablesize:
-            kernel_functions[SYS_getdtablesize] = (void*)sysent[SYS_getdtablesize].sy_call;
-            sysent[SYS_getdtablesize].sy_call = hook_getdtablesize;
-            printf("[GREY FOX] Hooked SYS_getdtablesize\n");
-            break;
-        case SYS_dup2:
-            kernel_functions[SYS_dup2] = (void*)sysent[SYS_dup2].sy_call;
-            sysent[SYS_dup2].sy_call = hook_dup2;
-            printf("[GREY FOX] Hooked SYS_dup2\n");
-            break;
-        case SYS_setpriority:
-            kernel_functions[SYS_setpriority] = (void*)sysent[SYS_setpriority].sy_call;
-            sysent[SYS_setpriority].sy_call = hook_setpriority;
-            printf("[GREY FOX] Hooked SYS_setpriority\n");
-            break;
-        case SYS_socket:
-            kernel_functions[SYS_socket] = (void*)sysent[SYS_socket].sy_call;
-            sysent[SYS_socket].sy_call = hook_socket;
-            printf("[GREY FOX] Hooked SYS_socket\n");
-            break;
-        case SYS_connect:
-            kernel_functions[SYS_connect] = (void*)sysent[SYS_connect].sy_call;
-            sysent[SYS_connect].sy_call = hook_connect;
-            printf("[GREY FOX] Hooked SYS_connect\n");
-            break;
-        case SYS_getpriority:
-            kernel_functions[SYS_getpriority] = (void*)sysent[SYS_getpriority].sy_call;
-            sysent[SYS_getpriority].sy_call = hook_getpriority;
-            printf("[GREY FOX] Hooked SYS_getpriority\n");
-            break;
-        case SYS_bind:
-            kernel_functions[SYS_bind] = (void*)sysent[SYS_bind].sy_call;
-            sysent[SYS_bind].sy_call = hook_bind;
-            printf("[GREY FOX] Hooked SYS_bind\n");
-            break;
-        case SYS_setsockopt:
-            kernel_functions[SYS_setsockopt] = (void*)sysent[SYS_setsockopt].sy_call;
-            sysent[SYS_setsockopt].sy_call = hook_setsockopt;
-            printf("[GREY FOX] Hooked SYS_setsockopt\n");
-            break;
-        case SYS_listen:
-            kernel_functions[SYS_listen] = (void*)sysent[SYS_listen].sy_call;
-            sysent[SYS_listen].sy_call = hook_listen;
-            printf("[GREY FOX] Hooked SYS_listen\n");
-            break;
-        case SYS_getsockopt:
-            kernel_functions[SYS_getsockopt] = (void*)sysent[SYS_getsockopt].sy_call;
-            sysent[SYS_getsockopt].sy_call = hook_getsockopt;
-            printf("[GREY FOX] Hooked SYS_getsockopt\n");
-            break;
-        case SYS_readv:
-            kernel_functions[SYS_readv] = (void*)sysent[SYS_readv].sy_call;
-            sysent[SYS_readv].sy_call = hook_readv;
-            printf("[GREY FOX] Hooked SYS_readv\n");
-            break;
-        case SYS_writev:
-            kernel_functions[SYS_writev] = (void*)sysent[SYS_writev].sy_call;
-            sysent[SYS_writev].sy_call = hook_writev;
-            printf("[GREY FOX] Hooked SYS_writev\n");
-            break;
-        case SYS_settimeofday:
-            kernel_functions[SYS_settimeofday] = (void*)sysent[SYS_settimeofday].sy_call;
-            sysent[SYS_settimeofday].sy_call = hook_settimeofday;
-            printf("[GREY FOX] Hooked SYS_settimeofday\n");
-            break;
-        case SYS_fchown:
-            kernel_functions[SYS_fchown] = (void*)sysent[SYS_fchown].sy_call;
-            sysent[SYS_fchown].sy_call = hook_fchown;
-            printf("[GREY FOX] Hooked SYS_fchown\n");
-            break;
-        case SYS_fchmod:
-            kernel_functions[SYS_fchmod] = (void*)sysent[SYS_fchmod].sy_call;
-            sysent[SYS_fchmod].sy_call = hook_fchmod;
-            printf("[GREY FOX] Hooked SYS_fchmod\n");
-            break;
-        case SYS_setreuid:
-            kernel_functions[SYS_setreuid] = (void*)sysent[SYS_setreuid].sy_call;
-            sysent[SYS_setreuid].sy_call = hook_setreuid;
-            printf("[GREY FOX] Hooked SYS_setreuid\n");
-            break;
-        case SYS_setregid:
-            kernel_functions[SYS_setregid] = (void*)sysent[SYS_setregid].sy_call;
-            sysent[SYS_setregid].sy_call = hook_setregid;
-            printf("[GREY FOX] Hooked SYS_setregid\n");
-            break;
-        case SYS_rename:
-            kernel_functions[SYS_rename] = (void*)sysent[SYS_rename].sy_call;
-            sysent[SYS_rename].sy_call = hook_rename;
-            printf("[GREY FOX] Hooked SYS_rename\n");
-            break;
-        case SYS_flock:
-            kernel_functions[SYS_flock] = (void*)sysent[SYS_flock].sy_call;
-            sysent[SYS_flock].sy_call = hook_flock;
-            printf("[GREY FOX] Hooked SYS_flock\n");
-            break;
-        case SYS_mkfifo:
-            kernel_functions[SYS_mkfifo] = (void*)sysent[SYS_mkfifo].sy_call;
-            sysent[SYS_mkfifo].sy_call = hook_mkfifo;
-            printf("[GREY FOX] Hooked SYS_mkfifo\n");
-            break;
-        case SYS_sendto:
-            kernel_functions[SYS_sendto] = (void*)sysent[SYS_sendto].sy_call;
-            sysent[SYS_sendto].sy_call = hook_sendto;
-            printf("[GREY FOX] Hooked SYS_sendto\n");
-            break;
-        case SYS_shutdown:
-            kernel_functions[SYS_shutdown] = (void*)sysent[SYS_shutdown].sy_call;
-            sysent[SYS_shutdown].sy_call = hook_shutdown;
-            printf("[GREY FOX] Hooked SYS_shutdown\n");
-            break;
-        case SYS_socketpair:
-            kernel_functions[SYS_socketpair] = (void*)sysent[SYS_socketpair].sy_call;
-            sysent[SYS_socketpair].sy_call = hook_socketpair;
-            printf("[GREY FOX] Hooked SYS_socketpair\n");
-            break;
-        case SYS_rmdir:
-            kernel_functions[SYS_rmdir] = (void*)sysent[SYS_rmdir].sy_call;
-            sysent[SYS_rmdir].sy_call = hook_rmdir;
-            printf("[GREY FOX] Hooked SYS_rmdir\n");
-            break;
-        case SYS_utimes:
-            kernel_functions[SYS_utimes] = (void*)sysent[SYS_utimes].sy_call;
-            sysent[SYS_utimes].sy_call = hook_utimes;
-            printf("[GREY FOX] Hooked SYS_utimes\n");
-            break;
-        case SYS_futimes:
-            kernel_functions[SYS_futimes] = (void*)sysent[SYS_futimes].sy_call;
-            sysent[SYS_futimes].sy_call = hook_futimes;
-            printf("[GREY FOX] Hooked SYS_futimes\n");
-            break;
-        case SYS_gethostuuid:
-            kernel_functions[SYS_gethostuuid] = (void*)sysent[SYS_gethostuuid].sy_call;
-            sysent[SYS_gethostuuid].sy_call = hook_gethostuuid;
-            printf("[GREY FOX] Hooked SYS_gethostuuid\n");
-            break;
-        case SYS_setsid:
-            kernel_functions[SYS_setsid] = (void*)sysent[SYS_setsid].sy_call;
-            sysent[SYS_setsid].sy_call = hook_setsid;
-            printf("[GREY FOX] Hooked SYS_setsid\n");
-            break;
-        case SYS_getpgid:
-            kernel_functions[SYS_getpgid] = (void*)sysent[SYS_getpgid].sy_call;
-            sysent[SYS_getpgid].sy_call = hook_getpgid;
-            printf("[GREY FOX] Hooked SYS_getpgid\n");
-            break;
-        case SYS_setprivexec:
-            kernel_functions[SYS_setprivexec] = (void*)sysent[SYS_setprivexec].sy_call;
-            sysent[SYS_setprivexec].sy_call = hook_setprivexec;
-            printf("[GREY FOX] Hooked SYS_setprivexec\n");
-            break;
-        case SYS_pwrite:
-            kernel_functions[SYS_pwrite] = (void*)sysent[SYS_pwrite].sy_call;
-            sysent[SYS_pwrite].sy_call = hook_pwrite;
-            printf("[GREY FOX] Hooked SYS_pwrite\n");
-            break;
-        case SYS_nfssvc:
-            kernel_functions[SYS_nfssvc] = (void*)sysent[SYS_nfssvc].sy_call;
-            sysent[SYS_nfssvc].sy_call = hook_nfssvc;
-            printf("[GREY FOX] Hooked SYS_nfssvc\n");
-            break;
-        case SYS_statfs:
-            kernel_functions[SYS_statfs] = (void*)sysent[SYS_statfs].sy_call;
-            sysent[SYS_statfs].sy_call = hook_statfs;
-            printf("[GREY FOX] Hooked SYS_statfs\n");
-            break;
-        case SYS_fstatfs:
-            kernel_functions[SYS_fstatfs] = (void*)sysent[SYS_fstatfs].sy_call;
-            sysent[SYS_fstatfs].sy_call = hook_fstatfs;
-            printf("[GREY FOX] Hooked SYS_fstatfs\n");
-            break;
-        case SYS_unmount:
-            kernel_functions[SYS_unmount] = (void*)sysent[SYS_unmount].sy_call;
-            sysent[SYS_unmount].sy_call = hook_unmount;
-            printf("[GREY FOX] Hooked SYS_unmount\n");
-            break;
-        case SYS_getfh:
-            kernel_functions[SYS_getfh] = (void*)sysent[SYS_getfh].sy_call;
-            sysent[SYS_getfh].sy_call = hook_getfh;
-            printf("[GREY FOX] Hooked SYS_getfh\n");
-            break;
-        case SYS_quotactl:
-            kernel_functions[SYS_quotactl] = (void*)sysent[SYS_quotactl].sy_call;
-            sysent[SYS_quotactl].sy_call = hook_quotactl;
-            printf("[GREY FOX] Hooked SYS_quotactl\n");
-            break;
-        case SYS_mount:
-            kernel_functions[SYS_mount] = (void*)sysent[SYS_mount].sy_call;
-            sysent[SYS_mount].sy_call = hook_mount;
-            printf("[GREY FOX] Hooked SYS_mount\n");
-            break;
-        case SYS_waitid:
-            kernel_functions[SYS_waitid] = (void*)sysent[SYS_waitid].sy_call;
-            sysent[SYS_waitid].sy_call = hook_waitid;
-            printf("[GREY FOX] Hooked SYS_waitid\n");
-            break;
-        case SYS_kdebug_trace:
-            kernel_functions[SYS_kdebug_trace] = (void*)sysent[SYS_kdebug_trace].sy_call;
-            sysent[SYS_kdebug_trace].sy_call = hook_kdebug_trace;
-            printf("[GREY FOX] Hooked SYS_kdebug_trace\n");
-            break;
-        case SYS_setgid:
-            kernel_functions[SYS_setgid] = (void*)sysent[SYS_setgid].sy_call;
-            sysent[SYS_setgid].sy_call = hook_setgid;
-            printf("[GREY FOX] Hooked SYS_setgid\n");
-            break;
-        case SYS_setegid:
-            kernel_functions[SYS_setegid] = (void*)sysent[SYS_setegid].sy_call;
-            sysent[SYS_setegid].sy_call = hook_setegid;
-            printf("[GREY FOX] Hooked SYS_setegid\n");
-            break;
-        case SYS_seteuid:
-            kernel_functions[SYS_seteuid] = (void*)sysent[SYS_seteuid].sy_call;
-            sysent[SYS_seteuid].sy_call = hook_seteuid;
-            printf("[GREY FOX] Hooked SYS_seteuid\n");
-            break;
-        case SYS_chud:
-            kernel_functions[SYS_chud] = (void*)sysent[SYS_chud].sy_call;
-            sysent[SYS_chud].sy_call = hook_chud;
-            printf("[GREY FOX] Hooked SYS_chud\n");
-            break;
-        case SYS_fdatasync:
-            kernel_functions[SYS_fdatasync] = (void*)sysent[SYS_fdatasync].sy_call;
-            sysent[SYS_fdatasync].sy_call = hook_fdatasync;
-            printf("[GREY FOX] Hooked SYS_fdatasync\n");
-            break;
-        case SYS_stat:
-            kernel_functions[SYS_stat] = (void*)sysent[SYS_stat].sy_call;
-            sysent[SYS_stat].sy_call = hook_stat;
-            printf("[GREY FOX] Hooked SYS_stat\n");
-            break;
-        case SYS_fstat:
-            kernel_functions[SYS_fstat] = (void*)sysent[SYS_fstat].sy_call;
-            sysent[SYS_fstat].sy_call = hook_fstat;
-            printf("[GREY FOX] Hooked SYS_fstat\n");
-            break;
-        case SYS_lstat:
-            kernel_functions[SYS_lstat] = (void*)sysent[SYS_lstat].sy_call;
-            sysent[SYS_lstat].sy_call = hook_lstat;
-            printf("[GREY FOX] Hooked SYS_lstat\n");
-            break;
-        case SYS_pathconf:
-            kernel_functions[SYS_pathconf] = (void*)sysent[SYS_pathconf].sy_call;
-            sysent[SYS_pathconf].sy_call = hook_pathconf;
-            printf("[GREY FOX] Hooked SYS_pathconf\n");
-            break;
-        case SYS_fpathconf:
-            kernel_functions[SYS_fpathconf] = (void*)sysent[SYS_fpathconf].sy_call;
-            sysent[SYS_fpathconf].sy_call = hook_fpathconf;
-            printf("[GREY FOX] Hooked SYS_fpathconf\n");
-            break;
-        case SYS_getrlimit:
-            kernel_functions[SYS_getrlimit] = (void*)sysent[SYS_getrlimit].sy_call;
-            sysent[SYS_getrlimit].sy_call = hook_getrlimit;
-            printf("[GREY FOX] Hooked SYS_getrlimit\n");
-            break;
-        case SYS_setrlimit:
-            kernel_functions[SYS_setrlimit] = (void*)sysent[SYS_setrlimit].sy_call;
-            sysent[SYS_setrlimit].sy_call = hook_setrlimit;
-            printf("[GREY FOX] Hooked SYS_setrlimit\n");
-            break;
-        case SYS_getdirentries:
-            kernel_functions[SYS_getdirentries] = (void*)sysent[SYS_getdirentries].sy_call;
-            sysent[SYS_getdirentries].sy_call = hook_getdirentries;
-            printf("[GREY FOX] Hooked SYS_getdirentries\n");
-            break;
-        case SYS_truncate:
-            kernel_functions[SYS_truncate] = (void*)sysent[SYS_truncate].sy_call;
-            sysent[SYS_truncate].sy_call = hook_truncate;
-            printf("[GREY FOX] Hooked SYS_truncate\n");
-            break;
-        case SYS_ftruncate:
-            kernel_functions[SYS_ftruncate] = (void*)sysent[SYS_ftruncate].sy_call;
-            sysent[SYS_ftruncate].sy_call = hook_ftruncate;
-            printf("[GREY FOX] Hooked SYS_ftruncate\n");
-            break;
-        case SYS___sysctl:
-            kernel_functions[SYS___sysctl] = (void*)sysent[SYS___sysctl].sy_call;
-            sysent[SYS___sysctl].sy_call = hook___sysctl;
-            printf("[GREY FOX] Hooked SYS___sysctl\n");
-            break;
-        case SYS_mlock:
-            kernel_functions[SYS_mlock] = (void*)sysent[SYS_mlock].sy_call;
-            sysent[SYS_mlock].sy_call = hook_mlock;
-            printf("[GREY FOX] Hooked SYS_mlock\n");
-            break;
-        case SYS_munlock:
-            kernel_functions[SYS_munlock] = (void*)sysent[SYS_munlock].sy_call;
-            sysent[SYS_munlock].sy_call = hook_munlock;
-            printf("[GREY FOX] Hooked SYS_munlock\n");
-            break;
-        case SYS_undelete:
-            kernel_functions[SYS_undelete] = (void*)sysent[SYS_undelete].sy_call;
-            sysent[SYS_undelete].sy_call = hook_undelete;
-            printf("[GREY FOX] Hooked SYS_undelete\n");
-            break;
-        case SYS_setattrlist:
-            kernel_functions[SYS_setattrlist] = (void*)sysent[SYS_setattrlist].sy_call;
-            sysent[SYS_setattrlist].sy_call = hook_setattrlist;
-            printf("[GREY FOX] Hooked SYS_setattrlist\n");
-            break;
-        case SYS_getdirentriesattr:
-            kernel_functions[SYS_getdirentriesattr] = (void*)sysent[SYS_getdirentriesattr].sy_call;
-            sysent[SYS_getdirentriesattr].sy_call = hook_getdirentriesattr;
-            printf("[GREY FOX] Hooked SYS_getdirentriesattr\n");
-            break;
-        case SYS_exchangedata:
-            kernel_functions[SYS_exchangedata] = (void*)sysent[SYS_exchangedata].sy_call;
-            sysent[SYS_exchangedata].sy_call = hook_exchangedata;
-            printf("[GREY FOX] Hooked SYS_exchangedata\n");
-            break;
-        case SYS_searchfs:
-            kernel_functions[SYS_searchfs] = (void*)sysent[SYS_searchfs].sy_call;
-            sysent[SYS_searchfs].sy_call = hook_searchfs;
-            printf("[GREY FOX] Hooked SYS_searchfs\n");
-            break;
-        case SYS_delete:
-            kernel_functions[SYS_delete] = (void*)sysent[SYS_delete].sy_call;
-            sysent[SYS_delete].sy_call = hook_delete;
-            printf("[GREY FOX] Hooked SYS_delete\n");
-            break;
-        case SYS_copyfile:
-            kernel_functions[SYS_copyfile] = (void*)sysent[SYS_copyfile].sy_call;
-            sysent[SYS_copyfile].sy_call = hook_copyfile;
-            printf("[GREY FOX] Hooked SYS_copyfile\n");
-            break;
-        case SYS_fgetattrlist:
-            kernel_functions[SYS_fgetattrlist] = (void*)sysent[SYS_fgetattrlist].sy_call;
-            sysent[SYS_fgetattrlist].sy_call = hook_fgetattrlist;
-            printf("[GREY FOX] Hooked SYS_fgetattrlist\n");
-            break;
-        case SYS_fsetattrlist:
-            kernel_functions[SYS_fsetattrlist] = (void*)sysent[SYS_fsetattrlist].sy_call;
-            sysent[SYS_fsetattrlist].sy_call = hook_fsetattrlist;
-            printf("[GREY FOX] Hooked SYS_fsetattrlist\n");
-            break;
-        case SYS_poll:
-            kernel_functions[SYS_poll] = (void*)sysent[SYS_poll].sy_call;
-            sysent[SYS_poll].sy_call = hook_poll;
-            printf("[GREY FOX] Hooked SYS_poll\n");
-            break;
-        case SYS_watchevent:
-            kernel_functions[SYS_watchevent] = (void*)sysent[SYS_watchevent].sy_call;
-            sysent[SYS_watchevent].sy_call = hook_watchevent;
-            printf("[GREY FOX] Hooked SYS_watchevent\n");
-            break;
-        case SYS_waitevent:
-            kernel_functions[SYS_waitevent] = (void*)sysent[SYS_waitevent].sy_call;
-            sysent[SYS_waitevent].sy_call = hook_waitevent;
-            printf("[GREY FOX] Hooked SYS_waitevent\n");
-            break;
-        case SYS_modwatch:
-            kernel_functions[SYS_modwatch] = (void*)sysent[SYS_modwatch].sy_call;
-            sysent[SYS_modwatch].sy_call = hook_modwatch;
-            printf("[GREY FOX] Hooked SYS_modwatch\n");
-            break;
-        case SYS_fgetxattr:
-            kernel_functions[SYS_fgetxattr] = (void*)sysent[SYS_fgetxattr].sy_call;
-            sysent[SYS_fgetxattr].sy_call = hook_fgetxattr;
-            printf("[GREY FOX] Hooked SYS_fgetxattr\n");
-            break;
-        case SYS_setxattr:
-            kernel_functions[SYS_setxattr] = (void*)sysent[SYS_setxattr].sy_call;
-            sysent[SYS_setxattr].sy_call = hook_setxattr;
-            printf("[GREY FOX] Hooked SYS_setxattr\n");
-            break;
-        case SYS_fsetxattr:
-            kernel_functions[SYS_fsetxattr] = (void*)sysent[SYS_fsetxattr].sy_call;
-            sysent[SYS_fsetxattr].sy_call = hook_fsetxattr;
-            printf("[GREY FOX] Hooked SYS_fsetxattr\n");
-            break;
-        case SYS_removexattr:
-            kernel_functions[SYS_removexattr] = (void*)sysent[SYS_removexattr].sy_call;
-            sysent[SYS_removexattr].sy_call = hook_removexattr;
-            printf("[GREY FOX] Hooked SYS_removexattr\n");
-            break;
-        case SYS_fremovexattr:
-            kernel_functions[SYS_fremovexattr] = (void*)sysent[SYS_fremovexattr].sy_call;
-            sysent[SYS_fremovexattr].sy_call = hook_fremovexattr;
-            printf("[GREY FOX] Hooked SYS_fremovexattr\n");
-            break;
-        case SYS_listxattr:
-            kernel_functions[SYS_listxattr] = (void*)sysent[SYS_listxattr].sy_call;
-            sysent[SYS_listxattr].sy_call = hook_listxattr;
-            printf("[GREY FOX] Hooked SYS_listxattr\n");
-            break;
-        case SYS_flistxattr:
-            kernel_functions[SYS_flistxattr] = (void*)sysent[SYS_flistxattr].sy_call;
-            sysent[SYS_flistxattr].sy_call = hook_flistxattr;
-            printf("[GREY FOX] Hooked SYS_flistxattr\n");
-            break;
-        case SYS_fsctl:
-            kernel_functions[SYS_fsctl] = (void*)sysent[SYS_fsctl].sy_call;
-            sysent[SYS_fsctl].sy_call = hook_fsctl;
-            printf("[GREY FOX] Hooked SYS_fsctl\n");
-            break;
-        case SYS_initgroups:
-            kernel_functions[SYS_initgroups] = (void*)sysent[SYS_initgroups].sy_call;
-            sysent[SYS_initgroups].sy_call = hook_initgroups;
-            printf("[GREY FOX] Hooked SYS_initgroups\n");
-            break;
-        case SYS_posix_spawn:
-            kernel_functions[SYS_posix_spawn] = (void*)sysent[SYS_posix_spawn].sy_call;
-            sysent[SYS_posix_spawn].sy_call = hook_posix_spawn;
-            printf("[GREY FOX] Hooked SYS_posix_spawn\n");
-            break;
-        case SYS_ffsctl:
-            kernel_functions[SYS_ffsctl] = (void*)sysent[SYS_ffsctl].sy_call;
-            sysent[SYS_ffsctl].sy_call = hook_ffsctl;
-            printf("[GREY FOX] Hooked SYS_ffsctl\n");
-            break;
-        case SYS_nfsclnt:
-            kernel_functions[SYS_nfsclnt] = (void*)sysent[SYS_nfsclnt].sy_call;
-            sysent[SYS_nfsclnt].sy_call = hook_nfsclnt;
-            printf("[GREY FOX] Hooked SYS_nfsclnt\n");
-            break;
-        case SYS_minherit:
-            kernel_functions[SYS_minherit] = (void*)sysent[SYS_minherit].sy_call;
-            sysent[SYS_minherit].sy_call = hook_minherit;
-            printf("[GREY FOX] Hooked SYS_minherit\n");
-            break;
-        case SYS_semsys:
-            kernel_functions[SYS_semsys] = (void*)sysent[SYS_semsys].sy_call;
-            sysent[SYS_semsys].sy_call = hook_semsys;
-            printf("[GREY FOX] Hooked SYS_semsys\n");
-            break;
-        case SYS_msgsys:
-            kernel_functions[SYS_msgsys] = (void*)sysent[SYS_msgsys].sy_call;
-            sysent[SYS_msgsys].sy_call = hook_msgsys;
-            printf("[GREY FOX] Hooked SYS_msgsys\n");
-            break;
-        case SYS_shmsys:
-            kernel_functions[SYS_shmsys] = (void*)sysent[SYS_shmsys].sy_call;
-            sysent[SYS_shmsys].sy_call = hook_shmsys;
-            printf("[GREY FOX] Hooked SYS_shmsys\n");
-            break;
-        case SYS_semctl:
-            kernel_functions[SYS_semctl] = (void*)sysent[SYS_semctl].sy_call;
-            sysent[SYS_semctl].sy_call = hook_semctl;
-            printf("[GREY FOX] Hooked SYS_semctl\n");
-            break;
-        case SYS_semget:
-            kernel_functions[SYS_semget] = (void*)sysent[SYS_semget].sy_call;
-            sysent[SYS_semget].sy_call = hook_semget;
-            printf("[GREY FOX] Hooked SYS_semget\n");
-            break;
-        case SYS_semop:
-            kernel_functions[SYS_semop] = (void*)sysent[SYS_semop].sy_call;
-            sysent[SYS_semop].sy_call = hook_semop;
-            printf("[GREY FOX] Hooked SYS_semop\n");
-            break;
-        case SYS_msgctl:
-            kernel_functions[SYS_msgctl] = (void*)sysent[SYS_msgctl].sy_call;
-            sysent[SYS_msgctl].sy_call = hook_msgctl;
-            printf("[GREY FOX] Hooked SYS_msgctl\n");
-            break;
-        case SYS_msgget:
-            kernel_functions[SYS_msgget] = (void*)sysent[SYS_msgget].sy_call;
-            sysent[SYS_msgget].sy_call = hook_msgget;
-            printf("[GREY FOX] Hooked SYS_msgget\n");
-            break;
-        case SYS_msgsnd:
-            kernel_functions[SYS_msgsnd] = (void*)sysent[SYS_msgsnd].sy_call;
-            sysent[SYS_msgsnd].sy_call = hook_msgsnd;
-            printf("[GREY FOX] Hooked SYS_msgsnd\n");
-            break;
-        case SYS_msgrcv:
-            kernel_functions[SYS_msgrcv] = (void*)sysent[SYS_msgrcv].sy_call;
-            sysent[SYS_msgrcv].sy_call = hook_msgrcv;
-            printf("[GREY FOX] Hooked SYS_msgrcv\n");
-            break;
-        case SYS_shmat:
-            kernel_functions[SYS_shmat] = (void*)sysent[SYS_shmat].sy_call;
-            sysent[SYS_shmat].sy_call = hook_shmat;
-            printf("[GREY FOX] Hooked SYS_shmat\n");
-            break;
-        case SYS_shmctl:
-            kernel_functions[SYS_shmctl] = (void*)sysent[SYS_shmctl].sy_call;
-            sysent[SYS_shmctl].sy_call = hook_shmctl;
-            printf("[GREY FOX] Hooked SYS_shmctl\n");
-            break;
-        case SYS_shmdt:
-            kernel_functions[SYS_shmdt] = (void*)sysent[SYS_shmdt].sy_call;
-            sysent[SYS_shmdt].sy_call = hook_shmdt;
-            printf("[GREY FOX] Hooked SYS_shmdt\n");
-            break;
-        case SYS_shmget:
-            kernel_functions[SYS_shmget] = (void*)sysent[SYS_shmget].sy_call;
-            sysent[SYS_shmget].sy_call = hook_shmget;
-            printf("[GREY FOX] Hooked SYS_shmget\n");
-            break;
-        case SYS_shm_open:
-            kernel_functions[SYS_shm_open] = (void*)sysent[SYS_shm_open].sy_call;
-            sysent[SYS_shm_open].sy_call = hook_shm_open;
-            printf("[GREY FOX] Hooked SYS_shm_open\n");
-            break;
-        case SYS_shm_unlink:
-            kernel_functions[SYS_shm_unlink] = (void*)sysent[SYS_shm_unlink].sy_call;
-            sysent[SYS_shm_unlink].sy_call = hook_shm_unlink;
-            printf("[GREY FOX] Hooked SYS_shm_unlink\n");
-            break;
-        case SYS_sem_close:
-            kernel_functions[SYS_sem_close] = (void*)sysent[SYS_sem_close].sy_call;
-            sysent[SYS_sem_close].sy_call = hook_sem_close;
-            printf("[GREY FOX] Hooked SYS_sem_close\n");
-            break;
-        case SYS_sem_unlink:
-            kernel_functions[SYS_sem_unlink] = (void*)sysent[SYS_sem_unlink].sy_call;
-            sysent[SYS_sem_unlink].sy_call = hook_sem_unlink;
-            printf("[GREY FOX] Hooked SYS_sem_unlink\n");
-            break;
-        case SYS_sem_wait:
-            kernel_functions[SYS_sem_wait] = (void*)sysent[SYS_sem_wait].sy_call;
-            sysent[SYS_sem_wait].sy_call = hook_sem_wait;
-            printf("[GREY FOX] Hooked SYS_sem_wait\n");
-            break;
-        case SYS_sem_trywait:
-            kernel_functions[SYS_sem_trywait] = (void*)sysent[SYS_sem_trywait].sy_call;
-            sysent[SYS_sem_trywait].sy_call = hook_sem_trywait;
-            printf("[GREY FOX] Hooked SYS_sem_trywait\n");
-            break;
-        case SYS_sem_post:
-            kernel_functions[SYS_sem_post] = (void*)sysent[SYS_sem_post].sy_call;
-            sysent[SYS_sem_post].sy_call = hook_sem_post;
-            printf("[GREY FOX] Hooked SYS_sem_post\n");
-            break;
-        case SYS_sem_init:
-            kernel_functions[SYS_sem_init] = (void*)sysent[SYS_sem_init].sy_call;
-            sysent[SYS_sem_init].sy_call = hook_sem_init;
-            printf("[GREY FOX] Hooked SYS_sem_init\n");
-            break;
-        case SYS_sem_destroy:
-            kernel_functions[SYS_sem_destroy] = (void*)sysent[SYS_sem_destroy].sy_call;
-            sysent[SYS_sem_destroy].sy_call = hook_sem_destroy;
-            printf("[GREY FOX] Hooked SYS_sem_destroy\n");
-            break;
-        case SYS_open_extended:
-            kernel_functions[SYS_open_extended] = (void*)sysent[SYS_open_extended].sy_call;
-            sysent[SYS_open_extended].sy_call = hook_open_extended;
-            printf("[GREY FOX] Hooked SYS_open_extended\n");
-            break;
-        case SYS_umask_extended:
-            kernel_functions[SYS_umask_extended] = (void*)sysent[SYS_umask_extended].sy_call;
-            sysent[SYS_umask_extended].sy_call = hook_umask_extended;
-            printf("[GREY FOX] Hooked SYS_umask_extended\n");
-            break;
-        case SYS_stat_extended:
-            kernel_functions[SYS_stat_extended] = (void*)sysent[SYS_stat_extended].sy_call;
-            sysent[SYS_stat_extended].sy_call = hook_stat_extended;
-            printf("[GREY FOX] Hooked SYS_stat_extended\n");
-            break;
-        case SYS_lstat_extended:
-            kernel_functions[SYS_lstat_extended] = (void*)sysent[SYS_lstat_extended].sy_call;
-            sysent[SYS_lstat_extended].sy_call = hook_lstat_extended;
-            printf("[GREY FOX] Hooked SYS_lstat_extended\n");
-            break;
-        case SYS_fstat_extended:
-            kernel_functions[SYS_fstat_extended] = (void*)sysent[SYS_fstat_extended].sy_call;
-            sysent[SYS_fstat_extended].sy_call = hook_fstat_extended;
-            printf("[GREY FOX] Hooked SYS_fstat_extended\n");
-            break;
-        case SYS_chmod_extended:
-            kernel_functions[SYS_chmod_extended] = (void*)sysent[SYS_chmod_extended].sy_call;
-            sysent[SYS_chmod_extended].sy_call = hook_chmod_extended;
-            printf("[GREY FOX] Hooked SYS_chmod_extended\n");
-            break;
-        case SYS_fchmod_extended:
-            kernel_functions[SYS_fchmod_extended] = (void*)sysent[SYS_fchmod_extended].sy_call;
-            sysent[SYS_fchmod_extended].sy_call = hook_fchmod_extended;
-            printf("[GREY FOX] Hooked SYS_fchmod_extended\n");
-            break;
-        case SYS_access_extended:
-            kernel_functions[SYS_access_extended] = (void*)sysent[SYS_access_extended].sy_call;
-            sysent[SYS_access_extended].sy_call = hook_access_extended;
-            printf("[GREY FOX] Hooked SYS_access_extended\n");
-            break;
-        case SYS_settid:
-            kernel_functions[SYS_settid] = (void*)sysent[SYS_settid].sy_call;
-            sysent[SYS_settid].sy_call = hook_settid;
-            printf("[GREY FOX] Hooked SYS_settid\n");
-            break;
-        case SYS_setsgroups:
-            kernel_functions[SYS_setsgroups] = (void*)sysent[SYS_setsgroups].sy_call;
-            sysent[SYS_setsgroups].sy_call = hook_setsgroups;
-            printf("[GREY FOX] Hooked SYS_setsgroups\n");
-            break;
-        case SYS_getsgroups:
-            kernel_functions[SYS_getsgroups] = (void*)sysent[SYS_getsgroups].sy_call;
-            sysent[SYS_getsgroups].sy_call = hook_getsgroups;
-            printf("[GREY FOX] Hooked SYS_getsgroups\n");
-            break;
-        case SYS_setwgroups:
-            kernel_functions[SYS_setwgroups] = (void*)sysent[SYS_setwgroups].sy_call;
-            sysent[SYS_setwgroups].sy_call = hook_setwgroups;
-            printf("[GREY FOX] Hooked SYS_setwgroups\n");
-            break;
-        case SYS_getwgroups:
-            kernel_functions[SYS_getwgroups] = (void*)sysent[SYS_getwgroups].sy_call;
-            sysent[SYS_getwgroups].sy_call = hook_getwgroups;
-            printf("[GREY FOX] Hooked SYS_getwgroups\n");
-            break;
-        case SYS_mkfifo_extended:
-            kernel_functions[SYS_mkfifo_extended] = (void*)sysent[SYS_mkfifo_extended].sy_call;
-            sysent[SYS_mkfifo_extended].sy_call = hook_mkfifo_extended;
-            printf("[GREY FOX] Hooked SYS_mkfifo_extended\n");
-            break;
-        case SYS_identitysvc:
-            kernel_functions[SYS_identitysvc] = (void*)sysent[SYS_identitysvc].sy_call;
-            sysent[SYS_identitysvc].sy_call = hook_identitysvc;
-            printf("[GREY FOX] Hooked SYS_identitysvc\n");
-            break;
-        case SYS_shared_region_check_np:
-            kernel_functions[SYS_shared_region_check_np] = (void*)sysent[SYS_shared_region_check_np].sy_call;
-            sysent[SYS_shared_region_check_np].sy_call = hook_shared_region_check_np;
-            printf("[GREY FOX] Hooked SYS_shared_region_check_np\n");
-            break;
-        case SYS_vm_pressure_monitor:
-            kernel_functions[SYS_vm_pressure_monitor] = (void*)sysent[SYS_vm_pressure_monitor].sy_call;
-            sysent[SYS_vm_pressure_monitor].sy_call = hook_vm_pressure_monitor;
-            printf("[GREY FOX] Hooked SYS_vm_pressure_monitor\n");
-            break;
-        case SYS_psynch_rw_longrdlock:
-            kernel_functions[SYS_psynch_rw_longrdlock] = (void*)sysent[SYS_psynch_rw_longrdlock].sy_call;
-            sysent[SYS_psynch_rw_longrdlock].sy_call = hook_psynch_rw_longrdlock;
-            printf("[GREY FOX] Hooked SYS_psynch_rw_longrdlock\n");
-            break;
-        case SYS_psynch_rw_yieldwrlock:
-            kernel_functions[SYS_psynch_rw_yieldwrlock] = (void*)sysent[SYS_psynch_rw_yieldwrlock].sy_call;
-            sysent[SYS_psynch_rw_yieldwrlock].sy_call = hook_psynch_rw_yieldwrlock;
-            printf("[GREY FOX] Hooked SYS_psynch_rw_yieldwrlock\n");
-            break;
-        case SYS_psynch_rw_downgrade:
-            kernel_functions[SYS_psynch_rw_downgrade] = (void*)sysent[SYS_psynch_rw_downgrade].sy_call;
-            sysent[SYS_psynch_rw_downgrade].sy_call = hook_psynch_rw_downgrade;
-            printf("[GREY FOX] Hooked SYS_psynch_rw_downgrade\n");
-            break;
-        case SYS_psynch_rw_upgrade:
-            kernel_functions[SYS_psynch_rw_upgrade] = (void*)sysent[SYS_psynch_rw_upgrade].sy_call;
-            sysent[SYS_psynch_rw_upgrade].sy_call = hook_psynch_rw_upgrade;
-            printf("[GREY FOX] Hooked SYS_psynch_rw_upgrade\n");
-            break;
-        case SYS_psynch_rw_unlock2:
-            kernel_functions[SYS_psynch_rw_unlock2] = (void*)sysent[SYS_psynch_rw_unlock2].sy_call;
-            sysent[SYS_psynch_rw_unlock2].sy_call = hook_psynch_rw_unlock2;
-            printf("[GREY FOX] Hooked SYS_psynch_rw_unlock2\n");
-            break;
-        case SYS_getsid:
-            kernel_functions[SYS_getsid] = (void*)sysent[SYS_getsid].sy_call;
-            sysent[SYS_getsid].sy_call = hook_getsid;
-            printf("[GREY FOX] Hooked SYS_getsid\n");
-            break;
-        case SYS_settid_with_pid:
-            kernel_functions[SYS_settid_with_pid] = (void*)sysent[SYS_settid_with_pid].sy_call;
-            sysent[SYS_settid_with_pid].sy_call = hook_settid_with_pid;
-            printf("[GREY FOX] Hooked SYS_settid_with_pid\n");
-            break;
-        case SYS_psynch_cvclrprepost:
-            kernel_functions[SYS_psynch_cvclrprepost] = (void*)sysent[SYS_psynch_cvclrprepost].sy_call;
-            sysent[SYS_psynch_cvclrprepost].sy_call = hook_psynch_cvclrprepost;
-            printf("[GREY FOX] Hooked SYS_psynch_cvclrprepost\n");
-            break;
-        case SYS_aio_fsync:
-            kernel_functions[SYS_aio_fsync] = (void*)sysent[SYS_aio_fsync].sy_call;
-            sysent[SYS_aio_fsync].sy_call = hook_aio_fsync;
-            printf("[GREY FOX] Hooked SYS_aio_fsync\n");
-            break;
-        case SYS_aio_return:
-            kernel_functions[SYS_aio_return] = (void*)sysent[SYS_aio_return].sy_call;
-            sysent[SYS_aio_return].sy_call = hook_aio_return;
-            printf("[GREY FOX] Hooked SYS_aio_return\n");
-            break;
-        case SYS_aio_suspend:
-            kernel_functions[SYS_aio_suspend] = (void*)sysent[SYS_aio_suspend].sy_call;
-            sysent[SYS_aio_suspend].sy_call = hook_aio_suspend;
-            printf("[GREY FOX] Hooked SYS_aio_suspend\n");
-            break;
-        case SYS_aio_cancel:
-            kernel_functions[SYS_aio_cancel] = (void*)sysent[SYS_aio_cancel].sy_call;
-            sysent[SYS_aio_cancel].sy_call = hook_aio_cancel;
-            printf("[GREY FOX] Hooked SYS_aio_cancel\n");
-            break;
-        case SYS_aio_error:
-            kernel_functions[SYS_aio_error] = (void*)sysent[SYS_aio_error].sy_call;
-            sysent[SYS_aio_error].sy_call = hook_aio_error;
-            printf("[GREY FOX] Hooked SYS_aio_error\n");
-            break;
-        case SYS_aio_read:
-            kernel_functions[SYS_aio_read] = (void*)sysent[SYS_aio_read].sy_call;
-            sysent[SYS_aio_read].sy_call = hook_aio_read;
-            printf("[GREY FOX] Hooked SYS_aio_read\n");
-            break;
-        case SYS_aio_write:
-            kernel_functions[SYS_aio_write] = (void*)sysent[SYS_aio_write].sy_call;
-            sysent[SYS_aio_write].sy_call = hook_aio_write;
-            printf("[GREY FOX] Hooked SYS_aio_write\n");
-            break;
-        case SYS_lio_listio:
-            kernel_functions[SYS_lio_listio] = (void*)sysent[SYS_lio_listio].sy_call;
-            sysent[SYS_lio_listio].sy_call = hook_lio_listio;
-            printf("[GREY FOX] Hooked SYS_lio_listio\n");
-            break;
-//        extensivly used by com.apple.WebKit
-//        case SYS_process_policy:
-//            kernel_functions[SYS_process_policy] = (void*)sysent[SYS_process_policy].sy_call;
-//            sysent[SYS_process_policy].sy_call = hook_process_policy;
-//            printf("[GREY FOX] Hooked SYS_process_policy\n");
-//            break;
-        case SYS_mlockall:
-            kernel_functions[SYS_mlockall] = (void*)sysent[SYS_mlockall].sy_call;
-            sysent[SYS_mlockall].sy_call = hook_mlockall;
-            printf("[GREY FOX] Hooked SYS_mlockall\n");
-            break;
-        case SYS_munlockall:
-            kernel_functions[SYS_munlockall] = (void*)sysent[SYS_munlockall].sy_call;
-            sysent[SYS_munlockall].sy_call = hook_munlockall;
-            printf("[GREY FOX] Hooked SYS_munlockall\n");
-            break;
-        case SYS___pthread_kill:
-            kernel_functions[SYS___pthread_kill] = (void*)sysent[SYS___pthread_kill].sy_call;
-            sysent[SYS___pthread_kill].sy_call = hook___pthread_kill;
-            printf("[GREY FOX] Hooked SYS___pthread_kill\n");
-            break;
-        case SYS___sigwait:
-            kernel_functions[SYS___sigwait] = (void*)sysent[SYS___sigwait].sy_call;
-            sysent[SYS___sigwait].sy_call = hook___sigwait;
-            printf("[GREY FOX] Hooked SYS___sigwait\n");
-            break;
-        case SYS___pthread_markcancel:
-            kernel_functions[SYS___pthread_markcancel] = (void*)sysent[SYS___pthread_markcancel].sy_call;
-            sysent[SYS___pthread_markcancel].sy_call = hook___pthread_markcancel;
-            printf("[GREY FOX] Hooked SYS___pthread_markcancel\n");
-            break;
-        case SYS_sendfile:
-            kernel_functions[SYS_sendfile] = (void*)sysent[SYS_sendfile].sy_call;
-            sysent[SYS_sendfile].sy_call = hook_sendfile;
-            printf("[GREY FOX] Hooked SYS_sendfile\n");
-            break;
-        case SYS_stat64_extended:
-            kernel_functions[SYS_stat64_extended] = (void*)sysent[SYS_stat64_extended].sy_call;
-            sysent[SYS_stat64_extended].sy_call = hook_stat64_extended;
-            printf("[GREY FOX] Hooked SYS_stat64_extended\n");
-            break;
-        case SYS_lstat64_extended:
-            kernel_functions[SYS_lstat64_extended] = (void*)sysent[SYS_lstat64_extended].sy_call;
-            sysent[SYS_lstat64_extended].sy_call = hook_lstat64_extended;
-            printf("[GREY FOX] Hooked SYS_lstat64_extended\n");
-            break;
-        case SYS_fstat64_extended:
-            kernel_functions[SYS_fstat64_extended] = (void*)sysent[SYS_fstat64_extended].sy_call;
-            sysent[SYS_fstat64_extended].sy_call = hook_fstat64_extended;
-            printf("[GREY FOX] Hooked SYS_fstat64_extended\n");
-            break;
-        case SYS_audit:
-            kernel_functions[SYS_audit] = (void*)sysent[SYS_audit].sy_call;
-            sysent[SYS_audit].sy_call = hook_audit;
-            printf("[GREY FOX] Hooked SYS_audit\n");
-            break;
-        case SYS_auditon:
-            kernel_functions[SYS_auditon] = (void*)sysent[SYS_auditon].sy_call;
-            sysent[SYS_auditon].sy_call = hook_auditon;
-            printf("[GREY FOX] Hooked SYS_auditon\n");
-            break;
-        case SYS_getauid:
-            kernel_functions[SYS_getauid] = (void*)sysent[SYS_getauid].sy_call;
-            sysent[SYS_getauid].sy_call = hook_getauid;
-            printf("[GREY FOX] Hooked SYS_getauid\n");
-            break;
-        case SYS_setauid:
-            kernel_functions[SYS_setauid] = (void*)sysent[SYS_setauid].sy_call;
-            sysent[SYS_setauid].sy_call = hook_setauid;
-            printf("[GREY FOX] Hooked SYS_setauid\n");
-            break;
-        case SYS_setaudit_addr:
-            kernel_functions[SYS_setaudit_addr] = (void*)sysent[SYS_setaudit_addr].sy_call;
-            sysent[SYS_setaudit_addr].sy_call = hook_setaudit_addr;
-            printf("[GREY FOX] Hooked SYS_setaudit_addr\n");
-            break;
-        case SYS_auditctl:
-            kernel_functions[SYS_auditctl] = (void*)sysent[SYS_auditctl].sy_call;
-            sysent[SYS_auditctl].sy_call = hook_auditctl;
-            printf("[GREY FOX] Hooked SYS_auditctl\n");
-            break;
-        case SYS_lchown:
-            kernel_functions[SYS_lchown] = (void*)sysent[SYS_lchown].sy_call;
-            sysent[SYS_lchown].sy_call = hook_lchown;
-            printf("[GREY FOX] Hooked SYS_lchown\n");
-            break;
-        case SYS_stack_snapshot:
-            kernel_functions[SYS_stack_snapshot] = (void*)sysent[SYS_stack_snapshot].sy_call;
-            sysent[SYS_stack_snapshot].sy_call = hook_stack_snapshot;
-            printf("[GREY FOX] Hooked SYS_stack_snapshot\n");
-            break;
-        case SYS___mac_execve:
-            kernel_functions[SYS___mac_execve] = (void*)sysent[SYS___mac_execve].sy_call;
-            sysent[SYS___mac_execve].sy_call = hook___mac_execve;
-            printf("[GREY FOX] Hooked SYS___mac_execve\n");
-            break;
-        case SYS___mac_get_file:
-            kernel_functions[SYS___mac_get_file] = (void*)sysent[SYS___mac_get_file].sy_call;
-            sysent[SYS___mac_get_file].sy_call = hook___mac_get_file;
-            printf("[GREY FOX] Hooked SYS___mac_get_file\n");
-            break;
-        case SYS___mac_set_file:
-            kernel_functions[SYS___mac_set_file] = (void*)sysent[SYS___mac_set_file].sy_call;
-            sysent[SYS___mac_set_file].sy_call = hook___mac_set_file;
-            printf("[GREY FOX] Hooked SYS___mac_set_file\n");
-            break;
-        case SYS___mac_get_link:
-            kernel_functions[SYS___mac_get_link] = (void*)sysent[SYS___mac_get_link].sy_call;
-            sysent[SYS___mac_get_link].sy_call = hook___mac_get_link;
-            printf("[GREY FOX] Hooked SYS___mac_get_link\n");
-            break;
-        case SYS___mac_set_link:
-            kernel_functions[SYS___mac_set_link] = (void*)sysent[SYS___mac_set_link].sy_call;
-            sysent[SYS___mac_set_link].sy_call = hook___mac_set_link;
-            printf("[GREY FOX] Hooked SYS___mac_set_link\n");
-            break;
-        case SYS___mac_get_proc:
-            kernel_functions[SYS___mac_get_proc] = (void*)sysent[SYS___mac_get_proc].sy_call;
-            sysent[SYS___mac_get_proc].sy_call = hook___mac_get_proc;
-            printf("[GREY FOX] Hooked SYS___mac_get_proc\n");
-            break;
-        case SYS___mac_set_proc:
-            kernel_functions[SYS___mac_set_proc] = (void*)sysent[SYS___mac_set_proc].sy_call;
-            sysent[SYS___mac_set_proc].sy_call = hook___mac_set_proc;
-            printf("[GREY FOX] Hooked SYS___mac_set_proc\n");
-            break;
-        case SYS___mac_get_fd:
-            kernel_functions[SYS___mac_get_fd] = (void*)sysent[SYS___mac_get_fd].sy_call;
-            sysent[SYS___mac_get_fd].sy_call = hook___mac_get_fd;
-            printf("[GREY FOX] Hooked SYS___mac_get_fd\n");
-            break;
-        case SYS___mac_set_fd:
-            kernel_functions[SYS___mac_set_fd] = (void*)sysent[SYS___mac_set_fd].sy_call;
-            sysent[SYS___mac_set_fd].sy_call = hook___mac_set_fd;
-            printf("[GREY FOX] Hooked SYS___mac_set_fd\n");
-            break;
-        case SYS___mac_get_pid:
-            kernel_functions[SYS___mac_get_pid] = (void*)sysent[SYS___mac_get_pid].sy_call;
-            sysent[SYS___mac_get_pid].sy_call = hook___mac_get_pid;
-            printf("[GREY FOX] Hooked SYS___mac_get_pid\n");
-            break;
-        case SYS___mac_get_lcid:
-            kernel_functions[SYS___mac_get_lcid] = (void*)sysent[SYS___mac_get_lcid].sy_call;
-            sysent[SYS___mac_get_lcid].sy_call = hook___mac_get_lcid;
-            printf("[GREY FOX] Hooked SYS___mac_get_lcid\n");
-            break;
-        case SYS___mac_get_lctx:
-            kernel_functions[SYS___mac_get_lctx] = (void*)sysent[SYS___mac_get_lctx].sy_call;
-            sysent[SYS___mac_get_lctx].sy_call = hook___mac_get_lctx;
-            printf("[GREY FOX] Hooked SYS___mac_get_lctx\n");
-            break;
-        case SYS___mac_set_lctx:
-            kernel_functions[SYS___mac_set_lctx] = (void*)sysent[SYS___mac_set_lctx].sy_call;
-            sysent[SYS___mac_set_lctx].sy_call = hook___mac_set_lctx;
-            printf("[GREY FOX] Hooked SYS___mac_set_lctx\n");
-            break;
-        case SYS_setlcid:
-            kernel_functions[SYS_setlcid] = (void*)sysent[SYS_setlcid].sy_call;
-            sysent[SYS_setlcid].sy_call = hook_setlcid;
-            printf("[GREY FOX] Hooked SYS_setlcid\n");
-            break;
-        case SYS_getlcid:
-            kernel_functions[SYS_getlcid] = (void*)sysent[SYS_getlcid].sy_call;
-            sysent[SYS_getlcid].sy_call = hook_getlcid;
-            printf("[GREY FOX] Hooked SYS_getlcid\n");
-            break;
-        case SYS_wait4_nocancel:
-            kernel_functions[SYS_wait4_nocancel] = (void*)sysent[SYS_wait4_nocancel].sy_call;
-            sysent[SYS_wait4_nocancel].sy_call = hook_wait4_nocancel;
-            printf("[GREY FOX] Hooked SYS_wait4_nocancel\n");
-            break;
-        case SYS_recvmsg_nocancel:
-            kernel_functions[SYS_recvmsg_nocancel] = (void*)sysent[SYS_recvmsg_nocancel].sy_call;
-            sysent[SYS_recvmsg_nocancel].sy_call = hook_recvmsg_nocancel;
-            printf("[GREY FOX] Hooked SYS_recvmsg_nocancel\n");
-            break;
-        case SYS_sendmsg_nocancel:
-            kernel_functions[SYS_sendmsg_nocancel] = (void*)sysent[SYS_sendmsg_nocancel].sy_call;
-            sysent[SYS_sendmsg_nocancel].sy_call = hook_sendmsg_nocancel;
-            printf("[GREY FOX] Hooked SYS_sendmsg_nocancel\n");
-            break;
-        case SYS_recvfrom_nocancel:
-            kernel_functions[SYS_recvfrom_nocancel] = (void*)sysent[SYS_recvfrom_nocancel].sy_call;
-            sysent[SYS_recvfrom_nocancel].sy_call = hook_recvfrom_nocancel;
-            printf("[GREY FOX] Hooked SYS_recvfrom_nocancel\n");
-            break;
-        case SYS_accept_nocancel:
-            kernel_functions[SYS_accept_nocancel] = (void*)sysent[SYS_accept_nocancel].sy_call;
-            sysent[SYS_accept_nocancel].sy_call = hook_accept_nocancel;
-            printf("[GREY FOX] Hooked SYS_accept_nocancel\n");
-            break;
-        case SYS_msync_nocancel:
-            kernel_functions[SYS_msync_nocancel] = (void*)sysent[SYS_msync_nocancel].sy_call;
-            sysent[SYS_msync_nocancel].sy_call = hook_msync_nocancel;
-            printf("[GREY FOX] Hooked SYS_msync_nocancel\n");
-            break;
-        case SYS_select_nocancel:
-            kernel_functions[SYS_select_nocancel] = (void*)sysent[SYS_select_nocancel].sy_call;
-            sysent[SYS_select_nocancel].sy_call = hook_select_nocancel;
-            printf("[GREY FOX] Hooked SYS_select_nocancel\n");
-            break;
-        case SYS_fsync_nocancel:
-            kernel_functions[SYS_fsync_nocancel] = (void*)sysent[SYS_fsync_nocancel].sy_call;
-            sysent[SYS_fsync_nocancel].sy_call = hook_fsync_nocancel;
-            printf("[GREY FOX] Hooked SYS_fsync_nocancel\n");
-            break;
-        case SYS_connect_nocancel:
-            kernel_functions[SYS_connect_nocancel] = (void*)sysent[SYS_connect_nocancel].sy_call;
-            sysent[SYS_connect_nocancel].sy_call = hook_connect_nocancel;
-            printf("[GREY FOX] Hooked SYS_connect_nocancel\n");
-            break;
-        case SYS_sigsuspend_nocancel:
-            kernel_functions[SYS_sigsuspend_nocancel] = (void*)sysent[SYS_sigsuspend_nocancel].sy_call;
-            sysent[SYS_sigsuspend_nocancel].sy_call = hook_sigsuspend_nocancel;
-            printf("[GREY FOX] Hooked SYS_sigsuspend_nocancel\n");
-            break;
-        case SYS_readv_nocancel:
-            kernel_functions[SYS_readv_nocancel] = (void*)sysent[SYS_readv_nocancel].sy_call;
-            sysent[SYS_readv_nocancel].sy_call = hook_readv_nocancel;
-            printf("[GREY FOX] Hooked SYS_readv_nocancel\n");
-            break;
-        case SYS_writev_nocancel:
-            kernel_functions[SYS_writev_nocancel] = (void*)sysent[SYS_writev_nocancel].sy_call;
-            sysent[SYS_writev_nocancel].sy_call = hook_writev_nocancel;
-            printf("[GREY FOX] Hooked SYS_writev_nocancel\n");
-            break;
-        case SYS_sendto_nocancel:
-            kernel_functions[SYS_sendto_nocancel] = (void*)sysent[SYS_sendto_nocancel].sy_call;
-            sysent[SYS_sendto_nocancel].sy_call = hook_sendto_nocancel;
-            printf("[GREY FOX] Hooked SYS_sendto_nocancel\n");
-            break;
-        case SYS_pread_nocancel:
-            kernel_functions[SYS_pread_nocancel] = (void*)sysent[SYS_pread_nocancel].sy_call;
-            sysent[SYS_pread_nocancel].sy_call = hook_pread_nocancel;
-            printf("[GREY FOX] Hooked SYS_pread_nocancel\n");
-            break;
-        case SYS_pwrite_nocancel:
-            kernel_functions[SYS_pwrite_nocancel] = (void*)sysent[SYS_pwrite_nocancel].sy_call;
-            sysent[SYS_pwrite_nocancel].sy_call = hook_pwrite_nocancel;
-            printf("[GREY FOX] Hooked SYS_pwrite_nocancel\n");
-            break;
-        case SYS_waitid_nocancel:
-            kernel_functions[SYS_waitid_nocancel] = (void*)sysent[SYS_waitid_nocancel].sy_call;
-            sysent[SYS_waitid_nocancel].sy_call = hook_waitid_nocancel;
-            printf("[GREY FOX] Hooked SYS_waitid_nocancel\n");
-            break;
-        case SYS_poll_nocancel:
-            kernel_functions[SYS_poll_nocancel] = (void*)sysent[SYS_poll_nocancel].sy_call;
-            sysent[SYS_poll_nocancel].sy_call = hook_poll_nocancel;
-            printf("[GREY FOX] Hooked SYS_poll_nocancel\n");
-            break;
-        case SYS_msgsnd_nocancel:
-            kernel_functions[SYS_msgsnd_nocancel] = (void*)sysent[SYS_msgsnd_nocancel].sy_call;
-            sysent[SYS_msgsnd_nocancel].sy_call = hook_msgsnd_nocancel;
-            printf("[GREY FOX] Hooked SYS_msgsnd_nocancel\n");
-            break;
-        case SYS_msgrcv_nocancel:
-            kernel_functions[SYS_msgrcv_nocancel] = (void*)sysent[SYS_msgrcv_nocancel].sy_call;
-            sysent[SYS_msgrcv_nocancel].sy_call = hook_msgrcv_nocancel;
-            printf("[GREY FOX] Hooked SYS_msgrcv_nocancel\n");
-            break;
-        case SYS_sem_wait_nocancel:
-            kernel_functions[SYS_sem_wait_nocancel] = (void*)sysent[SYS_sem_wait_nocancel].sy_call;
-            sysent[SYS_sem_wait_nocancel].sy_call = hook_sem_wait_nocancel;
-            printf("[GREY FOX] Hooked SYS_sem_wait_nocancel\n");
-            break;
-        case SYS_aio_suspend_nocancel:
-            kernel_functions[SYS_aio_suspend_nocancel] = (void*)sysent[SYS_aio_suspend_nocancel].sy_call;
-            sysent[SYS_aio_suspend_nocancel].sy_call = hook_aio_suspend_nocancel;
-            printf("[GREY FOX] Hooked SYS_aio_suspend_nocancel\n");
-            break;
-        case SYS___sigwait_nocancel:
-            kernel_functions[SYS___sigwait_nocancel] = (void*)sysent[SYS___sigwait_nocancel].sy_call;
-            sysent[SYS___sigwait_nocancel].sy_call = hook___sigwait_nocancel;
-            printf("[GREY FOX] Hooked SYS___sigwait_nocancel\n");
-            break;
-        case SYS___semwait_signal_nocancel:
-            kernel_functions[SYS___semwait_signal_nocancel] = (void*)sysent[SYS___semwait_signal_nocancel].sy_call;
-            sysent[SYS___semwait_signal_nocancel].sy_call = hook___semwait_signal_nocancel;
-            printf("[GREY FOX] Hooked SYS___semwait_signal_nocancel\n");
-            break;
-        case SYS___mac_mount:
-            kernel_functions[SYS___mac_mount] = (void*)sysent[SYS___mac_mount].sy_call;
-            sysent[SYS___mac_mount].sy_call = hook___mac_mount;
-            printf("[GREY FOX] Hooked SYS___mac_mount\n");
-            break;
-        case SYS___mac_get_mount:
-            kernel_functions[SYS___mac_get_mount] = (void*)sysent[SYS___mac_get_mount].sy_call;
-            sysent[SYS___mac_get_mount].sy_call = hook___mac_get_mount;
-            printf("[GREY FOX] Hooked SYS___mac_get_mount\n");
-            break;
-        case SYS___mac_getfsstat:
-            kernel_functions[SYS___mac_getfsstat] = (void*)sysent[SYS___mac_getfsstat].sy_call;
-            sysent[SYS___mac_getfsstat].sy_call = hook___mac_getfsstat;
-            printf("[GREY FOX] Hooked SYS___mac_getfsstat\n");
-            break;
-        case SYS_audit_session_self:
-            kernel_functions[SYS_audit_session_self] = (void*)sysent[SYS_audit_session_self].sy_call;
-            sysent[SYS_audit_session_self].sy_call = hook_audit_session_self;
-            printf("[GREY FOX] Hooked SYS_audit_session_self\n");
-            break;
-        case SYS_audit_session_join:
-            kernel_functions[SYS_audit_session_join] = (void*)sysent[SYS_audit_session_join].sy_call;
-            sysent[SYS_audit_session_join].sy_call = hook_audit_session_join;
-            printf("[GREY FOX] Hooked SYS_audit_session_join\n");
-            break;
-        case SYS_fileport_makeport:
-            kernel_functions[SYS_fileport_makeport] = (void*)sysent[SYS_fileport_makeport].sy_call;
-            sysent[SYS_fileport_makeport].sy_call = hook_fileport_makeport;
-            printf("[GREY FOX] Hooked SYS_fileport_makeport\n");
-            break;
-        case SYS_fileport_makefd:
-            kernel_functions[SYS_fileport_makefd] = (void*)sysent[SYS_fileport_makefd].sy_call;
-            sysent[SYS_fileport_makefd].sy_call = hook_fileport_makefd;
-            printf("[GREY FOX] Hooked SYS_fileport_makefd\n");
-            break;
-        case SYS_audit_session_port:
-            kernel_functions[SYS_audit_session_port] = (void*)sysent[SYS_audit_session_port].sy_call;
-            sysent[SYS_audit_session_port].sy_call = hook_audit_session_port;
-            printf("[GREY FOX] Hooked SYS_audit_session_port\n");
-            break;
-        case SYS_pid_suspend:
-            kernel_functions[SYS_pid_suspend] = (void*)sysent[SYS_pid_suspend].sy_call;
-            sysent[SYS_pid_suspend].sy_call = hook_pid_suspend;
-            printf("[GREY FOX] Hooked SYS_pid_suspend\n");
-            break;
-        case SYS_pid_resume:
-            kernel_functions[SYS_pid_resume] = (void*)sysent[SYS_pid_resume].sy_call;
-            sysent[SYS_pid_resume].sy_call = hook_pid_resume;
-            printf("[GREY FOX] Hooked SYS_pid_resume\n");
-            break;
-        case SYS_shared_region_map_and_slide_np:
-            kernel_functions[SYS_shared_region_map_and_slide_np] = (void*)sysent[SYS_shared_region_map_and_slide_np].sy_call;
-            sysent[SYS_shared_region_map_and_slide_np].sy_call = hook_shared_region_map_and_slide_np;
-            printf("[GREY FOX] Hooked SYS_shared_region_map_and_slide_np\n");
-            break;
-        case SYS_kas_info:
-            kernel_functions[SYS_kas_info] = (void*)sysent[SYS_kas_info].sy_call;
-            sysent[SYS_kas_info].sy_call = hook_kas_info;
-            printf("[GREY FOX] Hooked SYS_kas_info\n");
-            break;
-        case SYS_ioctl:
-            kernel_functions[SYS_ioctl] = (void*)sysent[SYS_ioctl].sy_call;
-            sysent[SYS_ioctl].sy_call = hook_ioctl;
-            printf("[GREY FOX] Hooked SYS_ioctl\n");
-            break;
-
-        default:
-            printf("[GREY FOX] Unknown syscall: %d\n", syscall);
+        case YOSEMITE: {
+            struct sysent_yosemite *sysent = (struct sysent_yosemite*)sysent_addr;
+            if (hook_functions[syscall] != NULL) {
+                kernel_functions[syscall] = (void*)sysent[syscall].sy_call;
+                sysent[syscall].sy_call = (sy_call_t*)hook_functions[syscall];
+                LOG_INFO("Hooked syscall no.: %d\n", syscall);
+            }
+            break;
+        }
+        case MAVERICKS: {
+            struct sysent_mavericks *sysent = (struct sysent_mavericks*)sysent_addr;
+            if (hook_functions[syscall]) {
+                kernel_functions[syscall] = (void*)sysent[syscall].sy_call;
+                sysent[syscall].sy_call = (sy_call_t*)hook_functions[syscall];
+                LOG_INFO("Hooked syscall no.: %d\n", syscall);
+            }
+            break;
+        }
+        default: {
+            struct sysent *sysent = (struct sysent*)sysent_addr;
+            if (hook_functions[syscall]) {
+                kernel_functions[syscall] = (void*)sysent[syscall].sy_call;
+                sysent[syscall].sy_call = (sy_call_t*)hook_functions[syscall];
+                LOG_INFO("Hooked syscall no.: %d\n", syscall);
+            }
+            break;
+        }
     }
-    
-    return KERN_SUCCESS;
 }
 
-
-
-kern_return_t unhook_syscall(void *sysent_addr, int32_t syscall) {
-    
+/* Restores the original syscall function. */
+void unhook_syscall(void *sysent_addr, int32_t syscall) {
     switch (version_major) {
-        case EL_CAPITAN:
-            sysent = (struct sysent_yosemite*)sysent_addr;
+        case EL_CAPITAN: {
+            if (kernel_functions[syscall] != NULL) {
+                struct sysent_yosemite *sysent = (struct sysent_yosemite*)sysent_addr;
+                sysent[syscall].sy_call = (sy_call_t*)kernel_functions[syscall];
+                LOG_INFO("Unhooked syscall %d\n", syscall);
+            } else {
+                LOG_INFO("Syscall %d was not hooked...\n", syscall);
+            }
             break;
-        case YOSEMITE:
-            sysent = (struct sysent_yosemite*)sysent_addr;
+        }
+        case YOSEMITE: {
+            if (kernel_functions[syscall] != NULL) {
+                struct sysent_yosemite *sysent = (struct sysent_yosemite*)sysent_addr;
+                sysent[syscall].sy_call = (sy_call_t*)kernel_functions[syscall];
+                LOG_INFO("Unhooked syscall %d\n", syscall);
+            } else {
+                LOG_INFO("Syscall %d was not hooked...\n", syscall);
+            }
             break;
-        case MAVERICKS:
-            sysent = (struct sysent_mavericks*)sysent_addr;
+        }
+        case MAVERICKS: {
+            struct sysent_mavericks *sysent = (struct sysent_mavericks*)sysent_addr;
+            if (kernel_functions[syscall] != NULL) {
+                sysent[syscall].sy_call = (sy_call_t*)kernel_functions[syscall];
+                LOG_INFO("Unhooked syscall %d\n", syscall);
+            } else {
+                LOG_INFO("Syscall %d was not hooked...\n", syscall);
+            }
             break;
-        default:
-            sysent = (struct sysent*)sysent_addr;
+        }
+        default: {
+            struct sysent *sysent = (struct sysent*)sysent_addr;
+            if (kernel_functions[syscall] != NULL) {
+                sysent[syscall].sy_call = (sy_call_t*)kernel_functions[syscall];
+                LOG_INFO("Unhooked syscall %d\n", syscall);
+            } else {
+                LOG_INFO("Syscall %d was not hooked...\n", syscall);
+            }
             break;
+        }
     }
-    
-    if (kernel_functions[syscall] != NULL) {
-        sysent[syscall].sy_call = (sy_call_t*)kernel_functions[syscall];
-        printf("[GREY FOX] Unhooked syscall %d\n", syscall);
-    } else {
-        printf("[GREY FOX] Syscall %d was not hooked...\n", syscall);
-    }
-    
-    return KERN_SUCCESS;
 }
 
-// Prevents deadlocks by checking if the process is not a call from syslogd or kernel.
-int should_i_log_this(struct proc *p) {
+/* Prevents deadlocks by checking if the process is not a call from syslogd or kernel. */
+int32_t should_i_log_this(struct proc *p) {
     char processname[MAXCOMLEN+1];
     pid_t pid = proc_pid(p);
     proc_name(pid, processname, sizeof(processname));
@@ -1380,66 +178,66 @@ char *substring;		/* Substring to try to find in string. */
     return (char *) 0;
 }
 
-int is_root(struct proc *p) {
-    int superusr = proc_suser(p);
-    return superusr == 0;
+/* Returns 1 iff process p has root privs. */
+uint32_t is_root(struct proc *p) {
+    return proc_suser(p) == 0;
 }
 
 
 
 /* Logs the imporant features of calling process to output. */
-int generic_syscall_log(struct proc *p, struct args *a, char* syscall, kern_f k, int *r) {
-    if (should_i_log_this(p)) {
-        pid_t pid = proc_pid(p);
-        pid_t ppid = proc_ppid(p);
-        int superusr = is_root(p);
-        char processname[MAXCOMLEN+1];
-        proc_name(pid, processname, sizeof(processname));
-        uint32_t secs = 0;
-        uint32_t microsecs = 0;
-        clock_get_system_microtime(&secs, &microsecs);
-        uint32_t mins = secs/60;
-        secs = secs%60;
-        uint32_t hours = mins/60;
-        //printf("[GREY FOX] %u, %u\n", secs, microsecs);
-        if (strcmp("SYS_open", syscall) == 0) {
-            struct open_args* oa = a;
-            char path[MAXPATHLEN];
-            size_t dummy = 0;
-            int error = copyinstr((void *)oa->path, (void *)path, MAXPATHLEN, &dummy);
-            if (!error) {
-                if (strstr(path, "/.") != NULL) {
-                    //printf("[GREY FOX] open hidden file path: %s\n",path);
-                    kprintf("[GREY FOX] %u:%u:%u,%u; %s; %d; %d; %s; %d; %s;\n",
-                           hours,
-                           mins,
-                           secs,
-                           microsecs,
-                           processname,
-                           pid,
-                           ppid,
-                           syscall,
-                           superusr,
-                           path);
-                }
+int32_t generic_syscall_log(struct proc *p, struct args *a, char* syscall, kern_f k, int *r) {
+    if (!should_i_log_this(p)) {
+        return k(p, a, r);
+    }
+    pid_t pid = proc_pid(p);
+    pid_t ppid = proc_ppid(p);
+    uint32_t superusr = is_root(p);
+    char processname[MAXCOMLEN+1];
+    proc_name(pid, processname, sizeof(processname));
+    clock_sec_t secs = 0;
+    uint32_t microsecs = 0;
+    clock_get_system_microtime(&secs, &microsecs);
+    unsigned long mins = secs/60;
+    secs = secs%60;
+    unsigned long hours = mins/60;
+    if (strcmp("SYS_open", syscall) == 0) {
+        struct open_args* oa = (struct open_args*) a;
+        char path[MAXPATHLEN];
+        size_t dummy = 0;
+        int error = copyinstr((void*)oa->path, (void *)path, MAXPATHLEN, &dummy);
+        if (!error) {
+            if (strstr(path, "/.") != NULL) {
+                //LOG_INFO("open hidden file path: %s\n",path);
+                printf("[GREY FOX] %lu:%lu:%lu,%u; %s; %d; %d; %s; %d; %s;\n",
+                       hours,
+                       mins,
+                       secs,
+                       microsecs,
+                       processname,
+                       pid,
+                       ppid,
+                       syscall,
+                       superusr,
+                       path);
             }
-        } else {
-            kprintf("[GREY FOX] %u:%u:%u,%u; %s; %d; %d; %s; %d;\n",
-                   hours,
-                   mins,
-                   secs,
-                   microsecs,
-                   processname,
-                   pid,
-                   ppid,
-                   syscall,
-                   superusr);
         }
+    } else {
+        printf("[GREY FOX] %lu:%lu:%lu,%u; %s; %d; %d; %s; %d;\n",
+               hours,
+               mins,
+               secs,
+               microsecs,
+               processname,
+               pid,
+               ppid,
+               syscall,
+               superusr);
     }
     return k(p, a, r);
 }
 
-/* This crap is also generated automatically ofc.. */
+/* This crap is generated automatically ofc.. */
 int hook_read(struct proc *p, struct read_args *u, user_ssize_t *r) { return generic_syscall_log(p, u, "SYS_read", kernel_functions[SYS_read], r); }
 int hook_write(struct proc *p, struct write_args *u, user_ssize_t *r) { return generic_syscall_log(p, u, "SYS_write", kernel_functions[SYS_write], r); }
 int hook_open(struct proc *p, struct open_args *u, int *r) { return generic_syscall_log(p, u, "SYS_open", kernel_functions[SYS_open], r); }

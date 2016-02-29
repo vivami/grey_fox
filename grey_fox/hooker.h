@@ -20,14 +20,11 @@
 
 kern_return_t hook_all_syscalls(void *sysent_addr);
 kern_return_t unhook_all_syscalls(void *sysent_addr);
-kern_return_t hook_syscall(void *sysent_addr, int32_t syscall);
-kern_return_t unhook_syscall(void *sysent_addr, int32_t syscall);
-
 
 
 
 /* monitoring functions */
-int hook_read(struct proc *, struct read_args *, user_ssize_t *);
+//int hook_read(struct proc *, struct read_args *, user_ssize_t *);
 int hook_nosys(struct proc *, struct nosys_args *, int *);
 void hook_exit(struct proc *, struct exit_args *, int32_t *);
 int hook_fork(struct proc *, struct fork_args *, int *);

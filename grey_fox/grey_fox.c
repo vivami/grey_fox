@@ -17,12 +17,11 @@ kern_return_t grey_fox_start(kmod_info_t * ki, void *d);
 kern_return_t grey_fox_stop(kmod_info_t *ki, void *d);
 
 /* Globals for syscall hooking */
-struct sysent_yosemite *_sysent;
-
+void *_sysent;
 
 kern_return_t grey_fox_start(kmod_info_t * ki, void *d)
 {
-    printf("[GREY FOX] Rawr, hi kernel!\n");
+    LOG_INFO("Rawr, hi kernel!");
     mach_vm_address_t kernel_base = 0;
     if ((_sysent = find_sysent(&kernel_base)) == NULL) {
         return KERN_FAILURE;
@@ -45,6 +44,6 @@ kern_return_t grey_fox_stop(kmod_info_t *ki, void *d)
        semaphores.
      */
     IOSleep(20000);
-    printf("[GREY FOX] Byebye..\n");
+    LOG_INFO("Byebye..");
     return KERN_SUCCESS;
 }
