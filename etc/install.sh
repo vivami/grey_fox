@@ -9,13 +9,13 @@ if [ "$EUID" -ne 0 ]
   exit
 fi
 echo "(1/$steps) [+] Installing grey fox to /System/Library/Extensions..."
-cp -R grey_fox.kext /System/Library/Extensions/grey_fox.kext
-chmod -R 755 /System/Library/Extensions/grey_fox.kext
-chown -R root:wheel /System/Library/Extensions/grey_fox.kext
+cp -R grey_fox.kext /Library/Extensions/grey_fox.kext
+chmod -R 755 /Library/Extensions/grey_fox.kext
+chown -R root:wheel /Library/Extensions/grey_fox.kext
 
 echo "(2/$steps) [+] Creating LaunchDaemon..."
 cp -R com.fox.grey_fox.plist /Library/LaunchDaemons/com.fox.grey_fox.plist
-chown -R root:wheel /System/Library/Extensions/grey_fox.kext
+chown -R root:wheel /Library/LaunchDaemons/com.fox.grey_fox.plist
 
 echo "(3/$steps) [+] Launching grey fox!\n"
 launchctl load -w /Library/LaunchDaemons/com.fox.grey_fox.plist

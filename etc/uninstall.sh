@@ -9,10 +9,10 @@ if [ "$EUID" -ne 0 ]
   exit
 fi
 echo "(1/$steps) [+] Unloading grey fox from kernel..." 
-kextunload /System/Library/Extensions/grey_fox.kext
+kextunload /Library/Extensions/grey_fox.kext
 
 echo "(2/$steps) [+] Removing grey fox from /System/Library/Extensions..."
-rm -rf /System/Library/Extensions/grey_fox.kext
+rm -rf /Library/Extensions/grey_fox.kext
 
 echo "(3/$steps) [+] Removing LaunchDaemon..."
 rm -rf /Library/LaunchDaemons/com.fox.grey_fox.plist
