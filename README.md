@@ -8,7 +8,7 @@ __NOTE__: since this kext is not signed with a valid kext certificate from Apple
 
 #### I. Enabling KEXT-DEV mode
 - Go to Terminal.app
-- Type: `sudo nvram boot-args="debug=0x146 kext-dev-mode=1 keepsyms=1`
+- Type: `sudo nvram boot-args="debug=0x146 kext-dev-mode=1 keepsyms=1"`
 
 This enables `kext-dev-mode` and also enables symbolic links to ensure that crash logs are somewhat useful.
 
