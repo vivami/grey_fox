@@ -20,7 +20,7 @@ Iff you are running OSX 10.11 (El Capitan), you will have to disable System Inte
 - Type: `csrutil disable`
 - Type: `reboot`
 
-You're good to go to III.
+You're good to go to III or IV.
 
 #### II. Disable KEXT-DEV mode
 
@@ -37,7 +37,16 @@ Iff you are running OSX 10.11 (El Capitan), you have to enable System Integerty 
 
 All security protections are put in place again.
 
-#### III. Install
+#### III. Manual run
+Manually running grey fox is recommended. This temporarily loads grey fox in the kernel and ensures that it is not automatically started after a reboot. In case of a kernel panic (crash), your system will reboot in an untouched state.
+
+- Unzip `grey_fox-x.x.zip` to the Desktop
+- Open Terminal.app
+- type: `sudo` and drag `run_greyfox.sh` inside the `grey_fox-x.x` folder into the Terminal window
+- Terminal should resolve the path to `run_greyfox.sh`. Hit `Enter`
+
+
+#### IV. Install
 `install.sh` will install `grey_fox.kext` in the kext proprietary directory `/Library/Extensions` and install a LaunchDaemon to ensure that it is launched upon system boot (this type of installation in itself could be identified as malicious behaviour). 
 
 - Unzip `grey_fox-x.x.zip` to the Desktop
@@ -47,7 +56,7 @@ All security protections are put in place again.
 - grey fox will now install, after a reboot it becomes active
 - You can check this by opening Console.app in `Applications/Utilities/Console.app`. 
 
-#### IV. Uninstall
+#### V. Uninstall
 - Open Terminal.app
 - type: `sudo` and drag `uninstall.sh` inside the `grey_fox-x.x` folder into the Terminal window
 - Terminal should resolve the path to `uninstall.sh` and hit `Enter`
@@ -55,7 +64,7 @@ All security protections are put in place again.
 grey fox will now uninstall. After a reboot, it is removed from your system.
 
 
-#### V. Export logs
+#### VI. Export logs
 - Open Finder.app
 - Press: CMD+Shift+G
 - Type: `/var/log/`
