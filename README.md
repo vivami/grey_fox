@@ -42,8 +42,8 @@ Manually running grey fox is recommended. This temporarily loads grey fox in the
 
 - Unzip `grey_fox-0.1.x.zip` to the Desktop
 - Open Terminal.app
-- type: `sudo` and drag `run_greyfox.sh` inside the `grey_fox-0.1.x` folder into the Terminal window
-- Terminal should resolve the path to `run_greyfox.sh`. Hit `Enter`
+- Type: `cd` and drag the `grey_fox-0.1.x` folder into the Terminal window and hit `Enter`
+- Then type `sudo run_greyfox.sh` and hit `Enter`
 
 
 #### IV. Install
@@ -51,14 +51,15 @@ Manually running grey fox is recommended. This temporarily loads grey fox in the
 
 - Unzip `grey_fox-0.1.x.zip` to the Desktop
 - Open Terminal.app
-- type: `sudo` and drag `install.sh` inside the `grey_fox-0.1.x` folder into the Terminal window
-- Terminal should resolve the path to `install.sh`. Hit `Enter`
+- Type: `cd` and drag the `grey_fox-0.1.x` folder into the Terminal window and hit `Enter`
+- Then type `sudo install.sh` and hit `Enter`
 - grey fox will now install, after a reboot it becomes active
 - You can check this by opening Console.app in `Applications/Utilities/Console.app`. 
 
 #### V. Uninstall
 - Open Terminal.app
-- type: `sudo` and drag `uninstall.sh` inside the `grey_fox-0.1.x` folder into the Terminal window
+- Type: `cd` and drag the `grey_fox-0.1.x` folder into the Terminal window and hit `Enter`
+- Then type `sudo uninstall.sh` and hit `Enter`
 - Terminal should resolve the path to `uninstall.sh` and hit `Enter`
 
 grey fox will now uninstall. After a reboot, it is removed from your system.
