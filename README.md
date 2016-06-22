@@ -9,7 +9,7 @@ __NOTE__: kext is now signed! :smile: Questions/requests? Let me know in the [is
 ####Environment
 grey fox is best ran in a VM (prefereably VMware), since VMware logs flawlessly via a serial port. `printf()`'s buffer is not flushed in time causing malformed output. `kprintf()` is thread-save, since a log operation over the serial port is [fully synchronous](https://stackoverflow.com/questions/36327605/printf-in-system-call-returns-malformed-output/). 
 
-#### III. Manual run
+#### Manual run
 Manually running grey fox is recommended. This temporarily loads grey fox in the kernel and ensures that it is not automatically started after a reboot. In case of a kernel panic (crash), your system will reboot in an untouched state.
 
 - Unzip `grey_fox-0.x.x.zip` to the Desktop
@@ -18,7 +18,7 @@ Manually running grey fox is recommended. This temporarily loads grey fox in the
 - Then type `sudo sh run_greyfox.sh` and hit `Enter`
 
 
-#### VI. Export logs
+#### Collecting logs (syscall traces)
 - Define an output file for VMware serial port ([VMware docs](https://pubs.vmware.com/fusion-5/index.jsp?topic=%2Fcom.vmware.fusion.help.doc%2FGUID-F1E20E9E-7588-4F3B-A0FC-A5FA7A68CFB4.html))
 - Boot the VM
 - Load greyfox
